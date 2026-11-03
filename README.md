@@ -25,3 +25,9 @@ Open http://localhost:3000. Without a key, the chat runs in demo mode. If you op
 - Keep the matching profile context and demo responses in `server.js` in sync with any resume updates.
 
 The site uses Google Fonts when network access is available and falls back to system fonts. No build step or third-party packages are needed.
+
+## TraceLens project
+
+The portfolio now includes **TraceLens**, a separate personal project inspired by Jatin's MEAN stack and sustainability domain experience. It is an Angular supply-chain impact dashboard with product passports, an Express/Mongoose API, and a record-grounded AI analyst. Its sample records are clearly labeled illustrative and are not company work or measured results.
+
+Open the live demo at `https://jatinsharmabharatdwaj.github.io/jatin-sharma-portfolio/trace-lens/`. The existing GitHub Pages workflow builds TraceLens and publishes it alongside this portfolio. To run locally or configure live AI, MongoDB, and Climatiq integrations, see `trace-lens/README.md`. GitHub Pages runs the demo UI; a separately hosted Node API is required for live provider calls or persisted records.
