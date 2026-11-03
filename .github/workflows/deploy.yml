@@ -25,10 +25,22 @@ jobs:
         uses: actions/checkout@v6
       - name: Configure Pages
         uses: actions/configure-pages@v5
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build TraceLens
+        working-directory: trace-lens
+        run: npm install --no-audit --no-fund && npm run build:pages
+      - name: Assemble Pages site
+        run: |
+          mkdir -p _site/trace-lens
+          cp index.html styles.css app.js _site/
+          cp -R trace-lens/dist/trace-lens/browser/. _site/trace-lens/
       - name: Package site
         uses: actions/upload-pages-artifact@v4
         with:
-          path: .
+          path: _site
       - name: Deploy site
         id: deployment
         uses: actions/deploy-pages@v4
