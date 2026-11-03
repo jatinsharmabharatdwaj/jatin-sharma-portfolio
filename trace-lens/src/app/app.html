@@ -1,0 +1,80 @@
+<div class="app-shell" [class.light-theme]="isLight()">
+  <aside class="sidebar">
+    <a class="brand" href="#" aria-label="TraceLens home"><span class="brand-symbol"><i></i><i></i><i></i></span><span>trace<span class="brand-light">lens</span><small>IMPACT INTELLIGENCE</small></span></a>
+    <div class="workspace-switch"><span class="workspace-icon">A</span><span><small>WORKSPACE</small><b>Aether Atelier</b></span><span class="chevron">⌄</span></div>
+    <div class="nav-label">WORKSPACE</div>
+    <nav class="side-nav" aria-label="Workspace navigation">
+      <button [class.active]="activeView() === 'overview'" (click)="navTo('overview')"><span class="nav-icon">◫</span> Overview <span class="nav-count">⌘ 1</span></button>
+      <button [class.active]="activeView() === 'products'" (click)="navTo('products')"><span class="nav-icon">▦</span> Products <span class="nav-count">24</span></button>
+      <button [class.active]="activeView() === 'suppliers'" (click)="navTo('suppliers')"><span class="nav-icon">⌘</span> Suppliers <span class="nav-count">18</span></button>
+      <button [class.active]="activeView() === 'impact'" (click)="navTo('impact')"><span class="nav-icon">◉</span> Impact data <span class="nav-count">⌘ 4</span></button>
+    </nav>
+    <div class="nav-label tools-label">TOOLS</div>
+    <nav class="side-nav">
+      <button (click)="showToast('Traceability map is ready for the next iteration.')"><span class="nav-icon">⌖</span> Traceability map <span class="new-dot"></span></button>
+      <button (click)="showToast('Evidence inbox is up to date.')"><span class="nav-icon">▤</span> Evidence inbox <span class="inbox-badge">3</span></button>
+      <button (click)="showToast('Audit log demo opened.')"><span class="nav-icon">◷</span> Audit log</button>
+    </nav>
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-footnote"><span class="footnote-spark">✳</span><div><b>Better data.<br>Better decisions.</b><small>Built for transparent supply chains.</small></div></div>
+    <button class="user-profile" (click)="showToast('Jatin Sharma · Project owner')"><span class="avatar">JS</span><span><b>Jatin Sharma</b><small>Project owner</small></span><span class="more">···</span></button>
+  </aside>
+
+  <main class="main-area">
+    <header class="topbar">
+      <div class="breadcrumb"><span>Workspace</span><span class="crumb-slash">/</span><b>{{ activeView() === 'overview' ? 'Overview' : activeView() === 'impact' ? 'Impact data' : (activeView() | titlecase) }}</b></div>
+      <div class="top-actions">
+        <label class="global-search"><span>⌕</span><input aria-label="Search portfolio" placeholder="Search products, suppliers…" [ngModel]="query()" (ngModelChange)="query.set($event)"/><kbd>⌘ K</kbd></label>
+        <span class="divider"></span>
+        <button class="icon-button" aria-label="Help" (click)="showToast('TraceLens demo · help and keyboard shortcuts')">?</button>
+        <button class="icon-button notification-button" aria-label="Notifications" (click)="showToast('You are all caught up.')">♧<i></i></button>
+        <button class="theme-switch" (click)="toggleTheme()" [attr.aria-label]="isLight() ? 'Switch to dark theme' : 'Switch to light theme'"><span>{{ isLight() ? '◐' : '☼' }}</span></button>
+      </div>
+    </header>
+
+    <div class="content-wrap">
+      <div class="demo-banner"><span class="demo-pulse"></span><span><b>DEMO WORKSPACE</b><i>All portfolio figures are illustrative sample data.</i></span><a href="https://github.com/jatinsharmabharatdwaj/jatin-sharma-portfolio" target="_blank" rel="noreferrer">HOW THIS PROJECT WORKS <span>↗</span></a></div>
+      <section class="page-intro">
+        <div><div class="eyebrow"><span class="eyebrow-line"></span> SUPPLY CHAIN IMPACT / FY 2026</div><h1>{{ activeView() === 'overview' ? 'Supply chain, ' : activeView() === 'products' ? 'Products, ' : activeView() === 'suppliers' ? 'Suppliers, ' : 'Impact data, ' }}<em>{{ activeView() === 'overview' ? 'in focus.' : 'connected.' }}</em></h1><p>One clear view of the materials, partners, and impact behind every product.</p></div>
+        <div class="intro-actions"><div class="period-select"><span class="calendar-icon">▦</span> Jan 01 — Jun 30, 2026 <span>⌄</span></div><button class="primary-button" (click)="showNewProduct.set(true)"><span>＋</span> New product</button></div>
+      </section>
+
+      <section class="metric-grid" aria-label="Impact summary">
+        <article class="metric-card metric-primary"><div class="metric-heading"><span>PORTFOLIO FOOTPRINT</span><span class="metric-icon">◉</span></div><div class="metric-value">142.8 <small>tCO₂e</small></div><div class="metric-bottom"><span class="trend-down">↘ 8.4%</span><span>vs. previous period</span><svg viewBox="0 0 90 26" aria-label="Downward emissions trend"><path d="M1 8 C12 9 12 15 21 12 S30 9 39 16 S49 10 56 14 S68 20 75 13 S84 15 89 6"/></svg></div></article>
+        <article class="metric-card"><div class="metric-heading"><span>TRACEABILITY COVERAGE</span><span class="metric-icon green-icon">⌖</span></div><div class="metric-value">86<small>%</small></div><div class="metric-bottom"><span class="trend-up">↗ 12 pts</span><span>across 24 products</span><div class="mini-progress"><i style="width:86%"></i></div></div></article>
+        <article class="metric-card"><div class="metric-heading"><span>SUPPLIER EVIDENCE</span><span class="metric-icon amber-icon">▤</span></div><div class="metric-value">73<small>%</small></div><div class="metric-bottom"><span class="neutral-count">18 / 24</span><span>supplier profiles ready</span><div class="mini-progress amber-progress"><i style="width:73%"></i></div></div></article>
+        <article class="metric-card"><div class="metric-heading"><span>OPEN DATA GAPS</span><span class="metric-icon red-icon">⌁</span></div><div class="metric-value">07 <small>items</small></div><div class="metric-bottom"><span class="gap-copy"><i></i> Needs attention</span><button class="small-arrow" (click)="navTo('products')" aria-label="Review gaps">↗</button></div></article>
+      </section>
+
+      <section class="analysis-grid">
+        <article class="panel impact-panel">
+          <div class="panel-heading"><div><div class="panel-kicker"><span class="heading-spark">✳</span> IMPACT OVERVIEW</div><h2>Where your footprint lands</h2></div><button class="select-control" (click)="navTo('impact')">By material <span>⌄</span></button></div>
+          <div class="chart-summary"><b>142.8 <small>tCO₂e</small></b><span class="chart-legend"><i></i> FY 2026 <i class="legend-muted"></i> FY 2025</span></div>
+          <div class="chart-area"><div class="chart-y-labels"><span>60 t</span><span>40 t</span><span>20 t</span><span>0</span></div><div class="chart-content"><div class="chart-grid-lines"><i></i><i></i><i></i><i></i></div><div class="bar-group" *ngFor="let entry of chartBars; let i = index"><div class="bars"><i class="bar bar-muted" [style.height.%]="entry.b / 60 * 100"></i><i class="bar" [class.bar-blue]="i === 1" [class.bar-orange]="i === 3" [style.height.%]="entry.a / 60 * 100"></i></div><span>{{ entry.name }}</span></div></div></div>
+          <div class="chart-foot"><span>ILLUSTRATIVE CATEGORY BREAKDOWN · NOT MEASURED DATA</span><button (click)="showToast('Impact data is illustrative in this demo.')">View methodology <span>↗</span></button></div>
+        </article>
+
+        <article class="panel ai-panel">
+          <div class="ai-panel-top"><div class="ai-mark">✳</div><div><div class="ai-title-line"><h2>Impact analyst</h2><span class="ai-status"><i></i> {{ isThinking() ? 'THINKING' : 'READY' }}</span></div><p>Ask a question about this workspace.</p></div><button class="more" aria-label="AI options" (click)="showToast('Grounded in demo records · AI key stays server-side')">···</button></div>
+          <div class="chat-scroll" aria-live="polite"><div class="chat-message" *ngFor="let message of messages()" [class.user-message]="message.role === 'user'"><span class="chat-avatar" *ngIf="message.role === 'assistant'">✳</span><div class="message-content"><p>{{ message.text }}</p><span class="message-source" *ngIf="message.sources?.length"><i></i> {{ message.sources?.join(' · ') }}</span></div><span class="chat-avatar user-chat-avatar" *ngIf="message.role === 'user'">JS</span></div><div class="chat-message" *ngIf="isThinking()"><span class="chat-avatar">✳</span><div class="message-content thinking"><span></span><span></span><span></span></div></div></div>
+          <div class="suggested-prompts" *ngIf="messages().length < 3"><button (click)="ask('Which product needs the most evidence?')">What needs evidence?</button><button (click)="ask('Where is the highest emissions hotspot?')">Find a hotspot</button></div>
+          <form class="chat-input" (ngSubmit)="ask()"><input aria-label="Ask the impact analyst" placeholder="Ask about a product or supplier…" [ngModel]="chatInput()" (ngModelChange)="chatInput.set($event)" name="question" maxlength="500"><button type="submit" aria-label="Send question" [disabled]="isThinking()">↑</button></form>
+          <div class="ai-foot"><span><b>✦</b> GROUNDED IN TRACEABLE RECORDS</span><span>{{ apiBase ? 'CONNECTED' : 'DEMO MODE' }}</span></div>
+        </article>
+      </section>
+
+      <section class="panel products-panel">
+        <div class="panel-heading products-heading"><div><div class="panel-kicker"><span class="heading-spark">◈</span> PRODUCT PASSPORTS</div><h2>Products in your portfolio <span class="count-pill">{{ filteredProducts().length }}</span></h2></div><div class="product-actions"><label class="table-search"><span>⌕</span><input placeholder="Filter products…" [ngModel]="query()" (ngModelChange)="query.set($event)" aria-label="Filter products"></label><button class="table-menu" (click)="exportCsv()"><span>⇩</span> Export <span>⌄</span></button><button class="view-all" (click)="navTo('products')">View all <span>→</span></button></div></div>
+        <div class="table-wrap"><table><thead><tr><th>PRODUCT</th><th>SUPPLIER / ORIGIN</th><th>TRACEABILITY</th><th>FOOTPRINT <span class="sort-icon">↕</span></th><th>STATUS</th><th></th></tr></thead><tbody><tr *ngFor="let product of filteredProducts()" (click)="openProduct(product)"><td><div class="product-cell"><span class="product-swatch" [style.background]="product.color"><i></i></span><span><b>{{ product.name }}</b><small>{{ product.id }} <span>·</span> {{ product.category }}</small></span></div></td><td><div class="supplier-cell"><b>{{ product.supplier }}</b><small><span class="location-dot">⌖</span> {{ product.region }}</small></div></td><td><div class="trace-cell"><div class="trace-track"><i [style.width.%]="product.progress"></i></div><span>{{ product.progress }}%</span></div></td><td><b class="co2-value">{{ product.emissions | number:'1.2-2' }} <small>kg</small></b></td><td><span class="status-pill" [class.verified]="product.status === 'Verified'" [class.review]="product.status === 'In review'" [class.missing]="product.status === 'Needs evidence'"><i></i>{{ product.status }}</span></td><td><button class="row-open" aria-label="Open product passport" (click)="$event.stopPropagation(); openProduct(product)">↗</button></td></tr><tr *ngIf="filteredProducts().length === 0"><td colspan="6" class="empty-row">No products match that search.</td></tr></tbody></table></div>
+        <div class="table-footer"><span>Showing <b>{{ filteredProducts().length }}</b> of <b>{{ products().length }}</b> demo products</span><span>Sample dataset · updates are not persisted in demo mode</span></div>
+      </section>
+      <footer class="app-footer"><span><i></i> TRACE LENS / PERSONAL PROJECT</span><span>BUILT WITH ANGULAR · NODE.JS · MONGODB · AI</span><span>DEMO DATA · 2026</span></footer>
+    </div>
+  </main>
+
+  <div class="toast" *ngIf="toast()"><span>✓</span>{{ toast() }}</div>
+
+  <div class="modal-backdrop" *ngIf="showNewProduct()" (click)="showNewProduct.set(false)"><section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="newProductTitle" (click)="$event.stopPropagation()"><button class="dialog-close" (click)="showNewProduct.set(false)" aria-label="Close">×</button><span class="dialog-kicker">PRODUCT PASSPORT / 01</span><h2 id="newProductTitle">Start with a product.</h2><p>Add a demo record to explore the traceability workflow.</p><label>PRODUCT NAME<input [ngModel]="newProductName()" (ngModelChange)="newProductName.set($event)" placeholder="e.g. Recycled cotton overshirt"></label><label>PRIMARY MATERIAL<input [ngModel]="newProductMaterial()" (ngModelChange)="newProductMaterial.set($event)" placeholder="e.g. Organic cotton · 70%"></label><div class="dialog-actions"><button class="cancel-button" (click)="showNewProduct.set(false)">Cancel</button><button class="primary-button" (click)="addProduct()" [disabled]="!newProductName().trim()">Create demo record <span>→</span></button></div></section></div>
+
+  <div class="modal-backdrop" *ngIf="selectedProduct() as product" (click)="closeProduct()"><section class="dialog-card passport-dialog" role="dialog" aria-modal="true" aria-labelledby="passportTitle" (click)="$event.stopPropagation()"><button class="dialog-close" (click)="closeProduct()" aria-label="Close">×</button><span class="dialog-kicker">DIGITAL PRODUCT PASSPORT / {{ product.id }}</span><h2 id="passportTitle">{{ product.name }}</h2><p>{{ product.category }} · {{ product.region }}</p><div class="passport-impact"><span>DEMO PRODUCT FOOTPRINT</span><b>{{ product.emissions | number:'1.2-2' }} <small>kg CO₂e</small></b><i>Illustrative sample value</i></div><div class="passport-row"><span>Primary material</span><b>{{ product.material }}</b></div><div class="passport-row"><span>Material batch</span><b>{{ product.batch }}</b></div><div class="passport-row"><span>Supplier</span><b>{{ product.supplier }}</b></div><div class="passport-row"><span>Evidence coverage</span><b>{{ product.progress }}% · {{ product.status }}</b></div><div class="timeline"><div><i></i><b>Material recorded</b><small>{{ product.batch }} · demo record</small></div><div><i></i><b>Supplier information linked</b><small>{{ product.supplier }} · demo record</small></div><div class="pending"><i></i><b>Impact factor review</b><small>Connect Climatiq to calculate live estimates</small></div></div><button class="primary-button passport-close" (click)="closeProduct()">Done <span>✓</span></button></section></div>
+</div>
