@@ -12,21 +12,21 @@
 
 
 /* Role-aware order flow */
-.order-role-note { margin-top: 8px; color: var(--text-muted); max-width: 680px; }
-.order-compose { margin: 20px 0 28px; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-raised); }
+.order-role-note { margin-top: 8px; color: var(--sub); max-width: 680px; }
+.order-compose { margin: 20px 0 28px; padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); }
 .order-compose h3, .order-card h3 { margin: 0 0 14px; }
 .order-form-grid { display: grid; grid-template-columns: 2fr 2fr 1fr 1fr; gap: 12px; }
-.order-compose label { display: grid; gap: 7px; margin-bottom: 14px; color: var(--text-muted); font-size: 10px; letter-spacing: .08em; }
-.order-compose input { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; letter-spacing: normal; }
+.order-compose label { display: grid; gap: 7px; margin-bottom: 14px; color: var(--sub); font-size: 10px; letter-spacing: .08em; }
+.order-compose input { width: 100%; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); font: inherit; letter-spacing: normal; }
 .order-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 20px 0; }
-.order-card { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-raised); }
+.order-card { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); }
 .order-card-head, .order-parties, .order-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .order-card h3 { margin: 18px 0 4px; }
-.order-quantity { display: block; margin-bottom: 18px; color: var(--accent); }
+.order-quantity { display: block; margin-bottom: 18px; color: var(--lime); }
 .order-parties { align-items: stretch; border-block: 1px solid var(--line); padding: 12px 0; }
 .order-parties span { display: grid; gap: 5px; min-width: 0; }
-.order-parties small { color: var(--text-muted); font-size: 9px; text-transform: uppercase; }
+.order-parties small { color: var(--sub); font-size: 9px; text-transform: uppercase; }
 .order-parties b { overflow-wrap: anywhere; font-size: 12px; }
-.order-card p { color: var(--text-muted); font-size: 12px; }
+.order-card p { color: var(--sub); font-size: 12px; }
 .order-actions { justify-content: flex-start; flex-wrap: wrap; margin-top: 16px; }
 @media (max-width: 700px) { .order-form-grid { grid-template-columns: 1fr 1fr; } .order-compose { padding: 14px; } }
