@@ -5,7 +5,9 @@
     "ng": "ng",
     "start": "ng serve --proxy-config proxy.conf.json",
     "start:api": "node server/index.js",
+    "start:prod": "node server/index.js",
     "build": "ng build",
+    "build:web": "ng build --configuration production --base-href /",
     "build:pages": "ng build --configuration production --base-href /jatin-sharma-portfolio/trace-lens/",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
