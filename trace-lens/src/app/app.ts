@@ -37,6 +37,7 @@ export class App {
   readonly signupAvailable = signal(false);
   readonly authEmail = signal('');
   readonly authPassword = signal('');
+  readonly authPasswordVisible = signal(false);
   readonly authSetupKey = signal('');
   readonly authRole = signal('');
   readonly authBusy = signal(false);
@@ -158,6 +159,7 @@ export class App {
   }
 
   async openLogin() {
+    this.authPasswordVisible.set(false);
     this.authSubmitted.set(false);
     this.authMode.set('login');
     this.authError.set('');
@@ -171,6 +173,7 @@ export class App {
 
   switchAuthMode(mode: 'login' | 'signup') {
     if (mode === 'signup' && !this.signupAvailable()) return;
+    this.authPasswordVisible.set(false);
     this.authSubmitted.set(false);
     this.authMode.set(mode);
     this.authError.set('');
