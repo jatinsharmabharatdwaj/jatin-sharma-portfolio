@@ -2,6 +2,7 @@
   <aside class="sidebar">
     <a class="brand" href="#" aria-label="TraceLens home"><span class="brand-symbol"><i></i><i></i><i></i></span><span>trace<span class="brand-light">lens</span><small>IMPACT INTELLIGENCE</small></span></a>
     <div class="workspace-switch"><span class="workspace-icon">J</span><span><small>WORKSPACE</small><b>Jatin’s TraceLens</b></span><span class="chevron">⌄</span></div>
+    <div class="sidebar-menu-scroll">
     <div class="nav-label">WORKSPACE</div>
     <nav class="side-nav" aria-label="Workspace navigation">
       <button [class.active]="activeView() === 'overview'" (click)="navTo('overview')"><span class="nav-icon">◫</span> Overview <span class="nav-count">⌘ 1</span></button>
@@ -16,6 +17,7 @@
       <button (click)="showToast('Evidence inbox is up to date.')"><span class="nav-icon">▤</span> Evidence inbox <span class="inbox-badge">3</span></button>
       <button (click)="showToast('Audit log demo opened.')"><span class="nav-icon">◷</span> Audit log</button>
     </nav>
+    </div>
     <div class="sidebar-spacer"></div>
     <div class="sidebar-footnote"><span class="footnote-spark">✳</span><div><b>Better data.<br>Better decisions.</b><small>Built for transparent supply chains.</small></div></div>
     <button class="user-profile" (click)="openLogin()"><span class="avatar">{{ isSignedIn() ? 'JS' : 'TL' }}</span><span><b>{{ isSignedIn() ? 'Jatin Sharma' : 'TraceLens visitor' }}</b><small>{{ isSignedIn() ? 'Workspace account · manage' : 'Viewer · sign in to edit' }}</small></span><span class="more">···</span></button>
