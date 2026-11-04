@@ -156,6 +156,18 @@ export class App {
     this.authError.set('');
     this.authPassword.set('');
     this.authSetupKey.set('');
+    this.authRole.set('');
+  }
+
+  startAccountSignup() {
+    localStorage.removeItem('tracelens-owner-token');
+    this.isSignedIn.set(false);
+    this.authEmail.set('');
+    this.authPassword.set('');
+    this.authSetupKey.set('');
+    this.authRole.set('');
+    this.authError.set('');
+    this.authMode.set('signup');
   }
 
   private completeSignIn(token: string) {
@@ -192,9 +204,8 @@ export class App {
     this.authError.set('');
     try {
       const result = await firstValueFrom(this.http.post<{ token: string }>(this.apiUrl('/api/auth/signup'), { email, password, setupCode, role }));
-      this.signupAvailable.set(false);
       this.completeSignIn(result.token);
-      this.showToast('Owner account created. Workspace editing is ready.');
+      this.showToast('Account created. You can now access the shared workspace.');
     } catch (error: any) { this.authError.set(error?.error?.error || 'Could not create the owner account. Check the setup key and try again.'); }
     finally { this.authBusy.set(false); }
   }
