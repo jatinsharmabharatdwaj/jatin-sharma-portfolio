@@ -149,7 +149,7 @@ export class App {
   closeProduct() { this.selectedProduct.set(null); }
   showToast(message: string) { this.toast.set(message); window.setTimeout(() => this.toast.set(''), 3200); }
 
-  isEmailValid(email: string) { return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim()); }
+  isEmailValid(email: string) { return new RegExp('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$').test(email.trim()); }
 
   authOptions() {
     const token = localStorage.getItem('tracelens-owner-token');
