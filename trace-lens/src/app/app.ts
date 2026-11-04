@@ -31,7 +31,13 @@ export class App {
   readonly climatiqEnabled = signal(false);
   readonly isSignedIn = signal(false);
   readonly showLogin = signal(false);
-  readonly loginPassword = signal('');
+  readonly authMode = signal<'login' | 'signup'>('login');
+  readonly signupAvailable = signal(false);
+  readonly authEmail = signal('');
+  readonly authPassword = signal('');
+  readonly authSetupKey = signal('');
+  readonly authBusy = signal(false);
+  readonly authError = signal('');
   readonly factorQuery = signal('');
   readonly factorResults = signal<Factor[]>([]);
   readonly selectedFactorId = signal('');
@@ -125,13 +131,63 @@ export class App {
     return token ? { headers: new HttpHeaders({ Authorization: `Bearer ${token}` }) } : {};
   }
 
-  async signIn() {
-    if (!this.loginPassword().trim()) return;
+  async openLogin() {
+    this.authMode.set('login');
+    this.authError.set('');
+    this.showLogin.set(true);
     try {
-      const result = await firstValueFrom(this.http.post<{ token: string }>(this.apiUrl('/api/auth/login'), { password: this.loginPassword() }));
-      localStorage.setItem('tracelens-owner-token', result.token); this.isSignedIn.set(true); this.showLogin.set(false); this.loginPassword.set('');
+      const setup = await firstValueFrom(this.http.get<{ signupAvailable: boolean }>(this.apiUrl('/api/auth/setup-status')));
+      this.signupAvailable.set(setup.signupAvailable);
+      if (setup.signupAvailable) this.authMode.set('signup');
+    } catch { this.signupAvailable.set(false); }
+  }
+
+  switchAuthMode(mode: 'login' | 'signup') {
+    if (mode === 'signup' && !this.signupAvailable()) return;
+    this.authMode.set(mode);
+    this.authError.set('');
+    this.authPassword.set('');
+    this.authSetupKey.set('');
+  }
+
+  private completeSignIn(token: string) {
+    localStorage.setItem('tracelens-owner-token', token);
+    this.isSignedIn.set(true);
+    this.showLogin.set(false);
+    this.authPassword.set('');
+    this.authSetupKey.set('');
+    this.authError.set('');
+  }
+
+  async signIn() {
+    const email = this.authEmail().trim().toLowerCase();
+    const password = this.authPassword();
+    if (!email || !password || this.authBusy()) return;
+    this.authBusy.set(true);
+    this.authError.set('');
+    try {
+      const result = await firstValueFrom(this.http.post<{ token: string }>(this.apiUrl('/api/auth/login'), { email, password }));
+      this.completeSignIn(result.token);
       this.showToast('Workspace editing unlocked for this browser.');
-    } catch { this.showToast('Sign-in failed. Check your password and API connection.'); }
+    } catch (error: any) { this.authError.set(error?.error?.error || 'Sign-in failed. Check your details and connection.'); }
+    finally { this.authBusy.set(false); }
+  }
+
+  async signUp() {
+    const email = this.authEmail().trim().toLowerCase();
+    const password = this.authPassword();
+    const setupCode = this.authSetupKey();
+    if (!email || !password || !setupCode || this.authBusy()) return;
+    if (password.length < 12) { this.authError.set('Choose a password with at least 12 characters.'); return; }
+    this.authBusy.set(true);
+    this.authError.set('');
+    try {
+      const result = await firstValueFrom(this.http.post<{ token: string }>(this.apiUrl('/api/auth/signup'), { email, password, setupCode }));
+      this.signupAvailable.set(false);
+      this.completeSignIn(result.token);
+      this.showToast('Owner account created. Workspace editing is ready.');
+    } catch (error: any) { this.authError.set(error?.error?.error || 'Could not create the owner account. Check the setup key and try again.'); }
+    finally { this.authBusy.set(false); }
   }
 
   signOut() {
@@ -139,7 +195,7 @@ export class App {
   }
 
   openCreateProduct() {
-    if (this.canWrite() && !this.isSignedIn()) { this.showLogin.set(true); return; }
+    if (this.canWrite() && !this.isSignedIn()) { void this.openLogin(); return; }
     if (!this.canWrite()) { this.showToast('Workspace editing is not configured on this API.'); return; }
     this.showNewProduct.set(true);
   }
@@ -155,7 +211,7 @@ export class App {
       this.products.update((items) => [response.product, ...items]);
       this.showNewProduct.set(false); this.newProductName.set(''); this.newProductMaterial.set(''); this.newProductSupplier.set(''); this.newProductRegion.set('');
       await this.refreshWorkspace(); this.showToast('Product saved to the workspace.');
-    } catch (error: any) { if (error?.status === 401) { this.showLogin.set(true); this.showToast('Sign in to save workspace changes.'); } else this.showToast(error?.error?.error || 'Could not save the product. Check the API connection and try again.'); }
+    } catch (error: any) { if (error?.status === 401) { void this.openLogin(); this.showToast('Sign in to save workspace changes.'); } else this.showToast(error?.error?.error || 'Could not save the product. Check the API connection and try again.'); }
     finally { this.busy.set(false); }
   }
 
@@ -164,7 +220,7 @@ export class App {
     try {
       await firstValueFrom(this.http.delete(this.apiUrl(`/api/products/${encodeURIComponent(product.id)}`), this.authOptions()));
       this.closeProduct(); await this.refreshWorkspace(); this.showToast('Product passport deleted.');
-    } catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); this.showLogin.set(true); } else this.showToast(error?.error?.error || 'Could not delete the product. Check the API connection.'); }
+    } catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); } else this.showToast(error?.error?.error || 'Could not delete the product. Check the API connection.'); }
   }
 
   async saveProduct(product: Product) {
@@ -177,7 +233,7 @@ export class App {
       const updated = this.products().find((entry) => entry.id === product.id);
       if (updated) this.selectedProduct.set(updated);
       this.showToast('Product passport updated.');
-    } catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); this.showLogin.set(true); } else this.showToast(error?.error?.error || 'Could not update this product.'); }
+    } catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); } else this.showToast(error?.error?.error || 'Could not update this product.'); }
     finally { this.busy.set(false); }
   }
 
@@ -194,7 +250,7 @@ export class App {
       const updated = this.products().find((entry) => entry.id === product.id);
       if (updated) this.selectedProduct.set(updated);
       this.showToast('Evidence record added.');
-    } catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); this.showLogin.set(true); } else this.showToast(error?.error?.error || 'Could not add evidence. Check the API connection.'); }
+    } catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); } else this.showToast(error?.error?.error || 'Could not add evidence. Check the API connection.'); }
     finally { this.busy.set(false); }
   }
 

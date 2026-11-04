@@ -17,7 +17,7 @@
     </nav>
     <div class="sidebar-spacer"></div>
     <div class="sidebar-footnote"><span class="footnote-spark">✳</span><div><b>Better data.<br>Better decisions.</b><small>Built for transparent supply chains.</small></div></div>
-    <button class="user-profile" (click)="isSignedIn() ? signOut() : showLogin.set(true)"><span class="avatar">JS</span><span><b>Jatin Sharma</b><small>{{ isSignedIn() ? 'Owner · click to sign out' : 'Viewer · sign in to edit' }}</small></span><span class="more">···</span></button>
+    <button class="user-profile" (click)="isSignedIn() ? signOut() : openLogin()"><span class="avatar">JS</span><span><b>Jatin Sharma</b><small>{{ isSignedIn() ? 'Owner · click to sign out' : 'Viewer · sign in to edit' }}</small></span><span class="more">···</span></button>
   </aside>
 
   <main class="main-area">
@@ -77,7 +77,28 @@
 
   <div class="modal-backdrop" *ngIf="showNewProduct()" (click)="showNewProduct.set(false)"><section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="newProductTitle" (click)="$event.stopPropagation()"><button class="dialog-close" (click)="showNewProduct.set(false)" aria-label="Close">×</button><span class="dialog-kicker">PRODUCT PASSPORT / NEW RECORD</span><h2 id="newProductTitle">Add a product.</h2><p>Create a workspace record. Add supplier evidence and a measured footprint when available.</p><label>PRODUCT NAME<input [ngModel]="newProductName()" (ngModelChange)="newProductName.set($event)" placeholder="e.g. Recycled cotton overshirt"></label><label>PRIMARY MATERIAL<input [ngModel]="newProductMaterial()" (ngModelChange)="newProductMaterial.set($event)" placeholder="e.g. Organic cotton · 70%"></label><label>SUPPLIER<input [ngModel]="newProductSupplier()" (ngModelChange)="newProductSupplier.set($event)" placeholder="Supplier name"></label><label>REGION<input [ngModel]="newProductRegion()" (ngModelChange)="newProductRegion.set($event)" placeholder="e.g. IN · Tamil Nadu"></label><div class="dialog-actions"><button class="cancel-button" (click)="showNewProduct.set(false)">Cancel</button><button class="primary-button" (click)="addProduct()" [disabled]="!newProductName().trim() || busy()">{{ busy() ? 'Saving…' : 'Save product' }} <span>→</span></button></div></section></div>
 
-  <div class="modal-backdrop" *ngIf="showLogin()" (click)="showLogin.set(false)"><section class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="loginTitle" (click)="$event.stopPropagation()"><button class="dialog-close" (click)="showLogin.set(false)" aria-label="Close">×</button><span class="dialog-kicker">PRIVATE WORKSPACE</span><h2 id="loginTitle">{{ isSignedIn() ? 'Workspace owner' : 'Sign in to edit.' }}</h2><p>Visitors can explore the workspace and ask the analyst. Only the workspace owner can add or change records.</p><form *ngIf="!isSignedIn()" (ngSubmit)="signIn()"><label>OWNER PASSWORD<input type="password" autocomplete="current-password" [ngModel]="loginPassword()" (ngModelChange)="loginPassword.set($event)" name="ownerPassword" required></label><div class="dialog-actions"><button type="button" class="cancel-button" (click)="showLogin.set(false)">Cancel</button><button class="primary-button" [disabled]="!loginPassword().trim()">Sign in <span>→</span></button></div></form><div class="dialog-actions" *ngIf="isSignedIn()"><button class="cancel-button" (click)="showLogin.set(false)">Close</button><button class="delete-button" (click)="signOut(); showLogin.set(false)">Sign out</button></div></section></div>
+  <div class="modal-backdrop" *ngIf="showLogin()" (click)="showLogin.set(false)">
+    <section class="dialog-card auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle" (click)="$event.stopPropagation()">
+      <button class="dialog-close" (click)="showLogin.set(false)" aria-label="Close">×</button>
+      <div class="auth-brand"><span class="auth-brand-mark">TL</span><span><b>TraceLens</b><small>PRIVATE WORKSPACE</small></span></div>
+      <span class="dialog-kicker">OWNER ACCESS / {{ authMode() === 'signup' && !isSignedIn() ? 'FIRST-TIME SETUP' : 'SECURE SIGN-IN' }}</span>
+      <h2 id="authTitle">{{ isSignedIn() ? 'Workspace secured.' : authMode() === 'signup' ? 'Create your owner account.' : 'Welcome back.' }}</h2>
+      <p *ngIf="!isSignedIn() && authMode() === 'signup'">Create the single owner account for this workspace. Use the <b>WORKSPACE_PASSWORD</b> you entered in Render as your one-time setup key, then choose a new sign-in password.</p>
+      <p *ngIf="!isSignedIn() && authMode() === 'login'">Sign in to manage product passports, supplier evidence, and impact records. Visitors can continue exploring in read-only mode.</p>
+      <form *ngIf="!isSignedIn()" (ngSubmit)="authMode() === 'signup' ? signUp() : signIn()">
+        <label>EMAIL ADDRESS<input type="email" autocomplete="email" [ngModel]="authEmail()" (ngModelChange)="authEmail.set($event)" name="ownerEmail" required maxlength="254"></label>
+        <label *ngIf="authMode() === 'signup'">ONE-TIME WORKSPACE SETUP KEY<input type="password" autocomplete="off" [ngModel]="authSetupKey()" (ngModelChange)="authSetupKey.set($event)" name="setupKey" required></label>
+        <label>{{ authMode() === 'signup' ? 'CREATE PASSWORD' : 'PASSWORD' }}<input type="password" [autocomplete]="authMode() === 'signup' ? 'new-password' : 'current-password'" [ngModel]="authPassword()" (ngModelChange)="authPassword.set($event)" name="ownerPassword" required maxlength="200"></label>
+        <small class="auth-hint" *ngIf="authMode() === 'signup'">Use at least 12 characters. Your password is stored as a salted hash.</small>
+        <div class="auth-error" *ngIf="authError()" role="alert">{{ authError() }}</div>
+        <div class="dialog-actions"><button type="button" class="cancel-button" (click)="showLogin.set(false)">Cancel</button><button type="submit" class="primary-button" [disabled]="authBusy() || !authEmail().trim() || !authPassword() || (authMode() === 'signup' && (!authSetupKey() || authPassword().length < 12))">{{ authBusy() ? 'Please wait…' : authMode() === 'signup' ? 'Create account' : 'Sign in' }} <span>→</span></button></div>
+      </form>
+      <button class="auth-mode-switch" *ngIf="!isSignedIn() && authMode() === 'signup' && signupAvailable()" (click)="switchAuthMode('login')">Already set up? Sign in <span>→</span></button>
+      <button class="auth-mode-switch" *ngIf="!isSignedIn() && authMode() === 'login' && signupAvailable()" (click)="switchAuthMode('signup')">First time here? Create the owner account <span>→</span></button>
+      <p class="auth-footnote" *ngIf="!isSignedIn()">Only one owner account can be created. Registration closes automatically after setup.</p>
+      <div class="dialog-actions" *ngIf="isSignedIn()"><button class="cancel-button" (click)="showLogin.set(false)">Close</button><button class="delete-button" (click)="signOut(); showLogin.set(false)">Sign out</button></div>
+    </section>
+  </div>
 
   <div class="modal-backdrop" *ngIf="selectedProduct() as product" (click)="closeProduct()">
     <section class="dialog-card passport-dialog" role="dialog" aria-modal="true" aria-labelledby="passportTitle" (click)="$event.stopPropagation()">
