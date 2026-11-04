@@ -36,15 +36,15 @@ const ProductSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true, index: true },
   name: { type: String, required: true, trim: true, maxlength: 120 },
   category: { type: String, default: 'Apparel · New product', maxlength: 80 },
-  supplier: { type: String, default: 'Supplier to be assigned', trim: true, maxlength: 120 },
+  supplier: { type: String, default: '—', trim: true, maxlength: 120 },
   region: { type: String, default: '—', trim: true, maxlength: 80 },
   status: { type: String, enum: ['Verified', 'In review', 'Needs evidence'], default: 'Needs evidence' },
   emissions: { type: Number, min: 0, default: 0 },
-  emissionsSource: { type: String, default: 'Not calculated' },
+  emissionsSource: { type: String, default: '—' },
   progress: { type: Number, min: 0, max: 100, default: 0 },
   color: { type: String, default: '#c4b9db' },
-  batch: { type: String, default: 'BATCH-PENDING', trim: true, maxlength: 80 },
-  material: { type: String, default: 'Material not added', trim: true, maxlength: 160 },
+  batch: { type: String, default: '—', trim: true, maxlength: 80 },
+  material: { type: String, default: '—', trim: true, maxlength: 160 },
   evidence: { type: [EvidenceSchema], default: [] },
   updatedAt: { type: Date, default: Date.now },
 }, { versionKey: false });
@@ -56,15 +56,10 @@ const OwnerSchema = new mongoose.Schema({
 }, { versionKey: false, timestamps: true });
 const Owner = mongoose.model('Owner', OwnerSchema);
 
-const demoProducts = [
-  { id: 'PRD-2048', name: 'Arcline utility overshirt', category: 'Apparel · Outerwear', supplier: 'Mirae Textile Works', region: 'IN · Tamil Nadu', status: 'Verified', emissions: 18.42, emissionsSource: 'Illustrative demo value', progress: 94, color: '#c2d6a4', batch: 'LOT-CTN-2408', material: 'Regenerative cotton · 68%', evidence: [{ kind: 'material', title: 'Material declaration', reference: 'LOT-CTN-2408' }, { kind: 'supplier', title: 'Supplier profile', reference: 'Mirae Textile Works' }] },
-  { id: 'PRD-1931', name: 'Form knit everyday tee', category: 'Apparel · Basics', supplier: 'Northstar Spinning Co.', region: 'IN · Gujarat', status: 'In review', emissions: 9.76, emissionsSource: 'Illustrative demo value', progress: 71, color: '#e7bd92', batch: 'LOT-ORG-1182', material: 'Organic cotton · 100%', evidence: [{ kind: 'material', title: 'Material declaration', reference: 'LOT-ORG-1182' }] },
-  { id: 'PRD-1830', name: 'Terrain recycled shell', category: 'Apparel · Performance', supplier: 'Alpine Loop Materials', region: 'TW · Taichung', status: 'Verified', emissions: 24.11, emissionsSource: 'Illustrative demo value', progress: 88, color: '#b9c9e4', batch: 'LOT-RPET-7731', material: 'Recycled nylon · 82%', evidence: [{ kind: 'material', title: 'Material declaration', reference: 'LOT-RPET-7731' }] },
-  { id: 'PRD-1712', name: 'Studio relaxed trouser', category: 'Apparel · Bottoms', supplier: 'Mirae Textile Works', region: 'IN · Tamil Nadu', status: 'Needs evidence', emissions: 15.08, emissionsSource: 'Illustrative demo value', progress: 52, color: '#ddc6d1', batch: 'LOT-LIN-0544', material: 'European flax linen · 55%', evidence: [] },
-];
+const demoProducts = []; // Empty until the workspace owner adds records.
 let databaseReady = false;
-const listProducts = async () => databaseReady ? Product.find().sort({ updatedAt: -1 }).lean() : demoProducts;
-const findProduct = async (id) => databaseReady ? Product.findOne({ id }) : demoProducts.find((product) => product.id === id);
+const listProducts = async () => databaseReady ? Product.find({ emissionsSource: { $ne: 'Illustrative demo value' } }).sort({ updatedAt: -1 }).lean() : demoProducts;
+const findProduct = async (id) => databaseReady ? Product.findOne({ id, emissionsSource: { $ne: 'Illustrative demo value' } }) : demoProducts.find((product) => product.id === id);
 const newProductId = () => `PRD-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
 const cleanText = (value, max = 120) => typeof value === 'string' ? value.trim().slice(0, max) : '';
 const scrypt = promisify(crypto.scrypt);
@@ -162,7 +157,7 @@ app.get('/api/analytics', async (_req, res, next) => {
     const count = products.length;
     const footprintKg = products.reduce((sum, product) => sum + (Number(product.emissions) || 0), 0);
     const coverage = count ? Math.round(products.reduce((sum, product) => sum + (Number(product.progress) || 0), 0) / count) : 0;
-    const suppliers = new Set(products.map((product) => product.supplier).filter(Boolean));
+    const suppliers = new Set(products.map((product) => product.supplier).filter((name) => name && name !== '—' && name !== 'Supplier to be assigned'));
     const gaps = products.filter((product) => product.progress < 80).length;
     res.json({ productCount: count, footprintKg: Number(footprintKg.toFixed(2)), coverage, supplierCount: suppliers.size, openGaps: gaps, verified: products.filter((product) => product.status === 'Verified').length, mode: databaseReady ? 'mongodb' : 'session-demo' });
   } catch (error) { next(error); }
@@ -172,7 +167,8 @@ app.get('/api/suppliers', async (_req, res, next) => {
     const products = await listProducts();
     const map = new Map();
     for (const product of products) {
-      const key = product.supplier || 'Supplier to be assigned';
+      const key = product.supplier;
+      if (!key || key === '—' || key === 'Supplier to be assigned') continue;
       const entry = map.get(key) || { name: key, region: product.region, products: 0, averageCoverage: 0, evidenceItems: 0, footprintKg: 0 };
       entry.products += 1; entry.averageCoverage += Number(product.progress) || 0;
       entry.evidenceItems += product.evidence?.length || 0; entry.footprintKg += Number(product.emissions) || 0;
@@ -198,9 +194,9 @@ app.post('/api/products', requireOwner, async (req, res, next) => {
     if (!name) return res.status(400).json({ error: 'Product name is required.' });
     const product = {
       id: newProductId(), name, category: cleanText(req.body.category, 80) || 'Apparel · New product',
-      supplier: cleanText(req.body.supplier) || 'Supplier to be assigned', region: cleanText(req.body.region, 80) || '—',
-      material: cleanText(req.body.material, 160) || 'Material not added', batch: cleanText(req.body.batch, 80) || 'BATCH-PENDING',
-      status: 'Needs evidence', emissions: 0, emissionsSource: 'Not calculated', progress: 0, evidence: [],
+      supplier: cleanText(req.body.supplier) || '—', region: cleanText(req.body.region, 80) || '—',
+      material: cleanText(req.body.material, 160) || '—', batch: cleanText(req.body.batch, 80) || '—',
+      status: 'Needs evidence', emissions: 0, emissionsSource: '—', progress: 0, evidence: [],
     };
     const saved = databaseReady ? await Product.create(product) : (demoProducts.unshift(product), product);
     res.status(201).json({ product: saved, mode: databaseReady ? 'mongodb' : 'session-demo' });
@@ -337,7 +333,7 @@ const port = Number(process.env.PORT || 4000);
 if (process.env.MONGODB_URI) {
   mongoose.connect(process.env.MONGODB_URI).then(async () => {
     databaseReady = true;
-    if (process.env.SEED_DEMO_DATA === 'true' && await Product.countDocuments() === 0) await Product.insertMany(demoProducts);
+    if (process.env.SEED_DEMO_DATA === 'true' && demoProducts.length && await Product.countDocuments() === 0) await Product.insertMany(demoProducts);
     console.log('MongoDB connected');
   }).catch((error) => console.error('MongoDB unavailable; using temporary session data:', error.message));
 }
