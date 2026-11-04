@@ -78,8 +78,13 @@ export class App {
   readonly chartBars = computed(() => {
     const groups = new Map<string, number>();
     for (const product of this.products()) {
-      const group = product.material?.split(/[·,]/)[0]?.trim() || 'Unspecified';
-      groups.set(group, (groups.get(group) || 0) + (Number(product.emissions) || 0));
+      const amount = Number(product.emissions) || 0;
+      if (amount <= 0) continue;
+      const material = product.material?.trim();
+      const group = material && material !== '—' && material !== 'Material not added'
+        ? material.split(/[·,]/)[0].trim()
+        : '—';
+      groups.set(group, (groups.get(group) || 0) + amount);
     }
     const top = [...groups.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
     const max = Math.max(...top.map(([, amount]) => amount), 1);
