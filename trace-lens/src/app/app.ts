@@ -1,148 +1,251 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient, HttpClientModule } from '@angular/common/http';
+import { HttpClient, HttpClientModule, HttpHeaders } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 
+type Evidence = { _id?: string; kind: string; title: string; reference?: string; notes?: string; addedAt?: string };
 type Product = {
-  id: string;
-  name: string;
-  category: string;
-  supplier: string;
-  region: string;
-  status: 'Verified' | 'In review' | 'Needs evidence';
-  emissions: number;
-  progress: number;
-  color: string;
-  batch: string;
-  material: string;
+  id: string; name: string; category: string; supplier: string; region: string;
+  status: 'Verified' | 'In review' | 'Needs evidence'; emissions: number; emissionsSource?: string;
+  progress: number; color: string; batch: string; material: string; evidence?: Evidence[];
 };
+type Supplier = { name: string; region: string; products: number; averageCoverage: number; evidenceItems: number; footprintKg: number };
+type Analytics = { productCount: number; footprintKg: number; coverage: number; supplierCount: number; openGaps: number; verified: number; mode: string };
+type ChatMessage = { role: 'assistant' | 'user'; text: string; sources?: string[]; mode?: string };
+type Factor = { id: string; name: string; category?: string; source?: string; year?: number; unit_type?: string };
 
-type ChatMessage = { role: 'assistant' | 'user'; text: string; sources?: string[] };
-
-const DEMO_PRODUCTS: Product[] = [
-  { id: 'PRD-2048', name: 'Arcline utility overshirt', category: 'Apparel · Outerwear', supplier: 'Mirae Textile Works', region: 'IN · Tamil Nadu', status: 'Verified', emissions: 18.42, progress: 94, color: '#c2d6a4', batch: 'LOT-CTN-2408', material: 'Regenerative cotton · 68%' },
-  { id: 'PRD-1931', name: 'Form knit everyday tee', category: 'Apparel · Basics', supplier: 'Northstar Spinning Co.', region: 'IN · Gujarat', status: 'In review', emissions: 9.76, progress: 71, color: '#e7bd92', batch: 'LOT-ORG-1182', material: 'Organic cotton · 100%' },
-  { id: 'PRD-1830', name: 'Terrain recycled shell', category: 'Apparel · Performance', supplier: 'Alpine Loop Materials', region: 'TW · Taichung', status: 'Verified', emissions: 24.11, progress: 88, color: '#b9c9e4', batch: 'LOT-RPET-7731', material: 'Recycled nylon · 82%' },
-  { id: 'PRD-1712', name: 'Studio relaxed trouser', category: 'Apparel · Bottoms', supplier: 'Mirae Textile Works', region: 'IN · Tamil Nadu', status: 'Needs evidence', emissions: 15.08, progress: 52, color: '#ddc6d1', batch: 'LOT-LIN-0544', material: 'European flax linen · 55%' },
-];
+const EMPTY_ANALYTICS: Analytics = { productCount: 0, footprintKg: 0, coverage: 0, supplierCount: 0, openGaps: 0, verified: 0, mode: 'offline' };
 
 @Component({
-  selector: 'app-root',
-  standalone: true,
-  imports: [CommonModule, FormsModule, HttpClientModule],
-  templateUrl: './app.html',
-  styleUrl: './app.scss',
+  selector: 'app-root', standalone: true, imports: [CommonModule, FormsModule, HttpClientModule],
+  templateUrl: './app.html', styleUrl: './app.scss',
 })
 export class App {
   private readonly http = inject(HttpClient);
   readonly apiBase = ((window as Window & { TRACELENS_API_BASE?: string }).TRACELENS_API_BASE ?? '').replace(/\/$/, '');
-  readonly products = signal<Product[]>(DEMO_PRODUCTS);
+  readonly apiState = signal<'connecting' | 'online' | 'offline'>('connecting');
+  readonly aiMode = signal<'checking' | 'live' | 'demo' | 'offline'>('checking');
+  readonly databaseMode = signal('checking');
+  readonly canWrite = signal(false);
+  readonly climatiqEnabled = signal(false);
+  readonly isSignedIn = signal(false);
+  readonly showLogin = signal(false);
+  readonly loginPassword = signal('');
+  readonly factorQuery = signal('');
+  readonly factorResults = signal<Factor[]>([]);
+  readonly selectedFactorId = signal('');
+  readonly factorParameters = signal('{\n  \n}');
+  readonly products = signal<Product[]>([]);
+  readonly suppliers = signal<Supplier[]>([]);
+  readonly analytics = signal<Analytics>(EMPTY_ANALYTICS);
   readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact'>('overview');
   readonly query = signal('');
   readonly isLight = signal(false);
   readonly isThinking = signal(false);
+  readonly busy = signal(false);
   readonly toast = signal('');
   readonly selectedProduct = signal<Product | null>(null);
   readonly showNewProduct = signal(false);
   readonly newProductName = signal('');
   readonly newProductMaterial = signal('');
+  readonly newProductSupplier = signal('');
+  readonly newProductRegion = signal('');
+  readonly evidenceTitle = signal('');
+  readonly evidenceKind = signal('material');
+  readonly evidenceReference = signal('');
+  readonly editName = signal('');
+  readonly editMaterial = signal('');
+  readonly editSupplier = signal('');
+  readonly editRegion = signal('');
+  readonly editCategory = signal('');
+  readonly editBatch = signal('');
   readonly chatInput = signal('');
   readonly messages = signal<ChatMessage[]>([
-    { role: 'assistant', text: 'Hi Jatin. I’m your impact analyst. Ask me about a product footprint, missing evidence, or where to focus next.', sources: ['DEMO CONTEXT'] },
+    { role: 'assistant', text: 'I analyze the product, supplier, evidence, and impact records connected to this workspace. Ask me what needs attention.', sources: [] },
   ]);
   readonly filteredProducts = computed(() => {
     const q = this.query().trim().toLowerCase();
     if (!q) return this.products();
-    return this.products().filter((item) => `${item.name} ${item.id} ${item.supplier} ${item.status}`.toLowerCase().includes(q));
+    return this.products().filter((p) => `${p.name} ${p.id} ${p.supplier} ${p.status} ${p.material} ${p.batch}`.toLowerCase().includes(q));
   });
-  readonly chartBars = [
-    { name: 'Cotton', a: 60, b: 42 }, { name: 'Synthetics', a: 44, b: 39 },
-    { name: 'Dyes', a: 32, b: 28 }, { name: 'Shipping', a: 28, b: 35 },
-    { name: 'Packaging', a: 16, b: 20 }, { name: 'Other', a: 22, b: 18 },
-  ];
+  readonly chartBars = computed(() => {
+    const groups = new Map<string, number>();
+    for (const product of this.products()) {
+      const group = product.material?.split(/[·,]/)[0]?.trim() || 'Unspecified';
+      groups.set(group, (groups.get(group) || 0) + (Number(product.emissions) || 0));
+    }
+    const top = [...groups.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+    const max = Math.max(...top.map(([, amount]) => amount), 1);
+    return top.map(([name, amount]) => ({ name, amount, height: Math.max(3, Math.round(amount / max * 100)) }));
+  });
 
   constructor() {
-    this.http.get<{ products: Product[] }>(`${this.apiBase}/api/products`).subscribe({
-      next: (response) => { if (response.products?.length) this.products.set(response.products); },
-      error: () => {},
-    });
+    try { this.isSignedIn.set(Boolean(localStorage.getItem('tracelens-owner-token'))); } catch {}
+    void this.refreshWorkspace();
+  }
+
+  private apiUrl(path: string) { return `${this.apiBase}${path}`; }
+
+  async refreshWorkspace() {
+    this.apiState.set('connecting');
+    try {
+      const [status, productResponse, analytics, suppliers] = await Promise.all([
+        firstValueFrom(this.http.get<{ api: string; ai: 'live' | 'demo'; database: string; writeAuth: boolean; climatiq: boolean }>(this.apiUrl('/api/status'))),
+        firstValueFrom(this.http.get<{ products: Product[]; mode: string }>(this.apiUrl('/api/products'))),
+        firstValueFrom(this.http.get<Analytics>(this.apiUrl('/api/analytics'))),
+        firstValueFrom(this.http.get<{ suppliers: Supplier[] }>(this.apiUrl('/api/suppliers'))),
+      ]);
+      this.apiState.set(status.api === 'online' ? 'online' : 'offline');
+      this.aiMode.set(status.ai);
+      this.databaseMode.set(status.database);
+      this.canWrite.set(status.writeAuth);
+      this.climatiqEnabled.set(status.climatiq);
+      this.products.set(productResponse.products || []);
+      this.analytics.set(analytics);
+      this.suppliers.set(suppliers.suppliers || []);
+    } catch {
+      this.apiState.set('offline'); this.aiMode.set('offline'); this.databaseMode.set('offline'); this.canWrite.set(false); this.climatiqEnabled.set(false);
+      this.showToast('API unavailable. Start the TraceLens server and reconnect.');
+    }
   }
 
   navTo(view: 'overview' | 'products' | 'suppliers' | 'impact') { this.activeView.set(view); }
   toggleTheme() { this.isLight.update((value) => !value); }
-  openProduct(product: Product) { this.selectedProduct.set(product); }
+  openProduct(product: Product) {
+    this.selectedProduct.set(product); this.editName.set(product.name); this.editMaterial.set(product.material);
+    this.editSupplier.set(product.supplier); this.editRegion.set(product.region);
+    this.editCategory.set(product.category); this.editBatch.set(product.batch);
+  }
   closeProduct() { this.selectedProduct.set(null); }
-  showToast(message: string) {
-    this.toast.set(message);
-    window.setTimeout(() => this.toast.set(''), 2800);
+  showToast(message: string) { this.toast.set(message); window.setTimeout(() => this.toast.set(''), 3200); }
+
+  authOptions() {
+    const token = localStorage.getItem('tracelens-owner-token');
+    return token ? { headers: new HttpHeaders({ Authorization: `Bearer ${token}` }) } : {};
+  }
+
+  async signIn() {
+    if (!this.loginPassword().trim()) return;
+    try {
+      const result = await firstValueFrom(this.http.post<{ token: string }>(this.apiUrl('/api/auth/login'), { password: this.loginPassword() }));
+      localStorage.setItem('tracelens-owner-token', result.token); this.isSignedIn.set(true); this.showLogin.set(false); this.loginPassword.set('');
+      this.showToast('Workspace editing unlocked for this browser.');
+    } catch { this.showToast('Sign-in failed. Check your password and API connection.'); }
+  }
+
+  signOut() {
+    localStorage.removeItem('tracelens-owner-token'); this.isSignedIn.set(false); this.showToast('Signed out. Workspace stays in read-only mode.');
+  }
+
+  openCreateProduct() {
+    if (this.canWrite() && !this.isSignedIn()) { this.showLogin.set(true); return; }
+    if (!this.canWrite()) { this.showToast('Workspace editing is not configured on this API.'); return; }
+    this.showNewProduct.set(true);
   }
 
   async addProduct() {
     const name = this.newProductName().trim();
-    if (!name) return;
-    const item: Product = {
-      id: `PRD-${Math.floor(2000 + Math.random() * 7000)}`,
-      name,
-      category: 'Apparel · New product',
-      supplier: 'Supplier to be assigned',
-      region: '—',
-      status: 'Needs evidence',
-      emissions: 0,
-      progress: 12,
-      color: '#c4b9db',
-      batch: 'BATCH-PENDING',
-      material: this.newProductMaterial().trim() || 'Material not added',
-    };
+    if (!name || this.busy()) return;
+    this.busy.set(true);
     try {
-      const response = await firstValueFrom(this.http.post<{ product: Product }>(`${this.apiBase}/api/products`, { name, material: item.material }));
+      const response = await firstValueFrom(this.http.post<{ product: Product }>(this.apiUrl('/api/products'), {
+        name, material: this.newProductMaterial().trim(), supplier: this.newProductSupplier().trim(), region: this.newProductRegion().trim(),
+      }, this.authOptions()));
       this.products.update((items) => [response.product, ...items]);
-    } catch {
-      this.products.update((items) => [item, ...items]);
-    }
-    this.newProductName.set('');
-    this.newProductMaterial.set('');
-    this.showNewProduct.set(false);
-    this.showToast(this.apiBase ? 'Product saved to your traceability workspace.' : 'Product added to this demo session.');
+      this.showNewProduct.set(false); this.newProductName.set(''); this.newProductMaterial.set(''); this.newProductSupplier.set(''); this.newProductRegion.set('');
+      await this.refreshWorkspace(); this.showToast('Product saved to the workspace.');
+    } catch (error: any) { if (error?.status === 401) { this.showLogin.set(true); this.showToast('Sign in to save workspace changes.'); } else this.showToast(error?.error?.error || 'Could not save the product. Check the API connection and try again.'); }
+    finally { this.busy.set(false); }
+  }
+
+  async deleteProduct(product: Product) {
+    if (!window.confirm(`Delete ${product.name} and its linked evidence?`)) return;
+    try {
+      await firstValueFrom(this.http.delete(this.apiUrl(`/api/products/${encodeURIComponent(product.id)}`), this.authOptions()));
+      this.closeProduct(); await this.refreshWorkspace(); this.showToast('Product passport deleted.');
+    } catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); this.showLogin.set(true); } else this.showToast(error?.error?.error || 'Could not delete the product. Check the API connection.'); }
+  }
+
+  async saveProduct(product: Product) {
+    this.busy.set(true);
+    try {
+      const response = await firstValueFrom(this.http.patch<{ product: Product }>(this.apiUrl(`/api/products/${encodeURIComponent(product.id)}`), {
+        name: this.editName(), category: this.editCategory(), material: this.editMaterial(), supplier: this.editSupplier(), region: this.editRegion(), batch: this.editBatch(),
+      }, this.authOptions()));
+      this.selectedProduct.set(response.product); await this.refreshWorkspace();
+      const updated = this.products().find((entry) => entry.id === product.id);
+      if (updated) this.selectedProduct.set(updated);
+      this.showToast('Product passport updated.');
+    } catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); this.showLogin.set(true); } else this.showToast(error?.error?.error || 'Could not update this product.'); }
+    finally { this.busy.set(false); }
+  }
+
+  async addEvidence(product: Product) {
+    const title = this.evidenceTitle().trim();
+    if (!title || this.busy()) return;
+    this.busy.set(true);
+    try {
+      const result = await firstValueFrom(this.http.post<{ product: Product }>(this.apiUrl(`/api/products/${encodeURIComponent(product.id)}/evidence`), {
+        title, kind: this.evidenceKind(), reference: this.evidenceReference().trim(),
+      }, this.authOptions()));
+      this.evidenceTitle.set(''); this.evidenceReference.set(''); this.selectedProduct.set(result.product);
+      await this.refreshWorkspace();
+      const updated = this.products().find((entry) => entry.id === product.id);
+      if (updated) this.selectedProduct.set(updated);
+      this.showToast('Evidence record added.');
+    } catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); this.showLogin.set(true); } else this.showToast(error?.error?.error || 'Could not add evidence. Check the API connection.'); }
+    finally { this.busy.set(false); }
+  }
+
+  async searchFactors() {
+    const query = this.factorQuery().trim();
+    if (!query) return;
+    try {
+      const response = await firstValueFrom(this.http.get<{ results: Factor[] }>(this.apiUrl(`/api/impact/factors?query=${encodeURIComponent(query)}`)));
+      this.factorResults.set(response.results || []);
+      if (!response.results?.length) this.showToast('No matching Climatiq factors were found.');
+    } catch (error: any) { this.showToast(error?.error?.error || 'Could not search Climatiq factors.'); }
+  }
+
+  async estimateImpact(product: Product) {
+    let parameters: Record<string, unknown>;
+    try { parameters = JSON.parse(this.factorParameters()); }
+    catch { this.showToast('Activity parameters must be valid JSON.'); return; }
+    try {
+      const result = await firstValueFrom(this.http.post<{ co2e: number; co2e_unit: string; source: string }>(this.apiUrl('/api/impact/estimate'), {
+        productId: product.id, emissionFactorId: this.selectedFactorId(), parameters,
+      }, this.authOptions()));
+      this.showToast(`Climatiq estimate: ${result.co2e} ${result.co2e_unit}.`);
+      await this.refreshWorkspace();
+      const updated = this.products().find((entry) => entry.id === product.id);
+      if (updated) this.selectedProduct.set(updated);
+    } catch (error: any) { this.showToast(error?.error?.error || 'Could not calculate the Climatiq estimate.'); }
   }
 
   exportCsv() {
-    const rows = [['Product ID', 'Product', 'Supplier', 'Region', 'Status', 'Demo CO2e (kg)'], ...this.filteredProducts().map((p) => [p.id, p.name, p.supplier, p.region, p.status, String(p.emissions)])];
-    const csv = rows.map((row) => row.map((cell) => `"${cell.replaceAll('"', '""')}"`).join(',')).join('\n');
+    const rows = [['Product ID', 'Product', 'Supplier', 'Region', 'Status', 'Footprint kg CO2e', 'Footprint source', 'Evidence coverage'], ...this.filteredProducts().map((p) => [p.id, p.name, p.supplier, p.region, p.status, String(p.emissions), p.emissionsSource || '', String(p.progress)])];
+    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = 'tracelens-demo-impact.csv';
-    anchor.click();
-    URL.revokeObjectURL(url);
-    this.showToast('Demo portfolio exported as CSV.');
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'tracelens-products.csv'; anchor.click(); URL.revokeObjectURL(url);
+    this.showToast('Current workspace records exported as CSV.');
   }
 
   async ask(text = this.chatInput()) {
     const question = text.trim();
     if (!question || this.isThinking()) return;
     this.messages.update((items) => [...items, { role: 'user', text: question }]);
-    this.chatInput.set('');
-    this.isThinking.set(true);
+    this.chatInput.set(''); this.isThinking.set(true);
     try {
-      const response = await firstValueFrom(this.http.post<{ answer: string; sources?: string[] }>(`${this.apiBase}/api/ai/insights`, {
-        question,
-        products: this.products().slice(0, 8).map(({ id, name, supplier, status, emissions, batch, material }) => ({ id, name, supplier, status, emissions, batch, material })),
-      }));
-      this.messages.update((items) => [...items, { role: 'assistant', text: response.answer, sources: response.sources ?? ['DEMO DATA'] }]);
+      const response = await firstValueFrom(this.http.post<{ answer: string; sources?: string[]; mode: 'live-ai' | 'demo' }>(this.apiUrl('/api/ai/insights'), { question }));
+      this.aiMode.set(response.mode === 'live-ai' ? 'live' : 'demo');
+      this.messages.update((items) => [...items, { role: 'assistant', text: response.answer, sources: response.sources ?? [], mode: response.mode }]);
     } catch {
-      this.messages.update((items) => [...items, { role: 'assistant', text: this.localAnswer(question), sources: ['DEMO DATA'] }]);
+      this.aiMode.set('offline');
+      this.messages.update((items) => [...items, { role: 'assistant', text: 'I could not reach the TraceLens API. Start the backend or check its deployment, then try again.', sources: ['API OFFLINE'], mode: 'offline' }]);
     } finally {
       this.isThinking.set(false);
       setTimeout(() => document.querySelector('.chat-scroll')?.scrollTo({ top: 99999, behavior: 'smooth' }), 0);
     }
-  }
-
-  private localAnswer(question: string) {
-    const q = question.toLowerCase();
-    if (/missing|evidence|verify|verified/.test(q)) return 'The Studio relaxed trouser has the largest evidence gap in this demo set at 52% completeness. Its linen batch LOT-LIN-0544 is missing a transport record and a supplier document. Ask the supplier for those two records before treating the footprint as decision-ready.';
-    if (/reduce|highest|hotspot|impact|emission|carbon/.test(q)) return 'In the demo data, the Terrain recycled shell has the largest product footprint at 24.11 kg CO2e. Compare its material and transport records before choosing a reduction. These figures are illustrative demo values, not measured results.';
-    if (/supplier|mirae/.test(q)) return 'Mirae Textile Works appears on two demo products. Consolidating evidence requests for that supplier could close multiple traceability gaps at once. The sample data does not include verified facility audit results.';
-    return 'I can summarize the demo portfolio, flag missing evidence, or compare product-level carbon estimates. Demo values are illustrative; connect the backend to MongoDB, Climatiq, and an AI provider for live, source-grounded analysis.';
   }
 }

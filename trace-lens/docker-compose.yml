@@ -1,0 +1,34 @@
+services:
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    volumes:
+      - tracelens-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "${PORT:-4000}:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      MONGODB_URI: mongodb://mongo:27017/tracelens
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      CLIENT_ORIGIN: ${CLIENT_ORIGIN:-http://localhost:4000}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      CLIMATIQ_API_KEY: ${CLIMATIQ_API_KEY:-}
+      WORKSPACE_PASSWORD: ${WORKSPACE_PASSWORD:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+volumes:
+  tracelens-data:

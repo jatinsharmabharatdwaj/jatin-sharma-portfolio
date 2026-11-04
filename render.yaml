@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: jatin-tracelens
+    runtime: docker
+    rootDir: trace-lens
+    healthCheckPath: /api/status
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: TRUST_PROXY
+        value: "true"
+      - key: CLIENT_ORIGIN
+        value: https://jatinsharmabharatdwaj.github.io
+      - key: SEED_DEMO_DATA
+        value: "true"
+      - key: MONGODB_URI
+        sync: false
+      - key: WORKSPACE_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
