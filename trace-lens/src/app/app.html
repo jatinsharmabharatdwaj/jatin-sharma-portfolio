@@ -17,7 +17,7 @@
     </nav>
     <div class="sidebar-spacer"></div>
     <div class="sidebar-footnote"><span class="footnote-spark">✳</span><div><b>Better data.<br>Better decisions.</b><small>Built for transparent supply chains.</small></div></div>
-    <button class="user-profile" (click)="isSignedIn() ? signOut() : openLogin()"><span class="avatar">JS</span><span><b>Jatin Sharma</b><small>{{ isSignedIn() ? 'Owner · click to sign out' : 'Viewer · sign in to edit' }}</small></span><span class="more">···</span></button>
+    <button class="user-profile" (click)="openLogin()"><span class="avatar">JS</span><span><b>Jatin Sharma</b><small>{{ isSignedIn() ? 'Workspace account · manage' : 'Viewer · sign in to edit' }}</small></span><span class="more">···</span></button>
   </aside>
 
   <main class="main-area">
@@ -81,9 +81,9 @@
     <section class="dialog-card auth-card" role="dialog" aria-modal="true" aria-labelledby="authTitle" (click)="$event.stopPropagation()">
       <button class="dialog-close" (click)="showLogin.set(false)" aria-label="Close">×</button>
       <div class="auth-brand"><span class="auth-brand-mark">TL</span><span><b>TraceLens</b><small>PRIVATE WORKSPACE</small></span></div>
-      <span class="dialog-kicker">OWNER ACCESS / {{ authMode() === 'signup' && !isSignedIn() ? 'FIRST-TIME SETUP' : 'SECURE SIGN-IN' }}</span>
-      <h2 id="authTitle">{{ isSignedIn() ? 'Workspace secured.' : authMode() === 'signup' ? 'Create your owner account.' : 'Welcome back.' }}</h2>
-      <p *ngIf="!isSignedIn() && authMode() === 'signup'">Create the single owner account for this workspace. Use the <b>WORKSPACE_PASSWORD</b> you entered in Render as your one-time setup key, then choose a new sign-in password.</p>
+      <span class="dialog-kicker">ACCOUNT ACCESS / {{ authMode() === 'signup' && !isSignedIn() ? 'CREATE ACCOUNT' : 'SECURE SIGN-IN' }}</span>
+      <h2 id="authTitle">{{ isSignedIn() ? 'Workspace account.' : authMode() === 'signup' ? 'Create your account.' : 'Welcome back.' }}</h2>
+      <p *ngIf="!isSignedIn() && authMode() === 'signup'">Create an account for this shared workspace. Choose your supply-chain role and enter the workspace setup key to continue.</p>
       <p *ngIf="!isSignedIn() && authMode() === 'login'">Sign in to manage product passports, supplier evidence, and impact records. Visitors can continue exploring in read-only mode.</p>
       <form *ngIf="!isSignedIn()" (ngSubmit)="authMode() === 'signup' ? signUp() : signIn()">
         <label>EMAIL ADDRESS<input type="email" autocomplete="email" [ngModel]="authEmail()" (ngModelChange)="authEmail.set($event)" name="ownerEmail" required maxlength="254"></label>
@@ -96,9 +96,9 @@
         <div class="dialog-actions"><button type="button" class="cancel-button" (click)="showLogin.set(false)">Cancel</button><button type="submit" class="primary-button" [disabled]="authBusy() || !authEmail().trim() || !authPassword() || (authMode() === 'signup' && (!authRole() || !authSetupKey() || authPassword().length < 12))">{{ authBusy() ? 'Please wait…' : authMode() === 'signup' ? 'Create account' : 'Sign in' }} <span>→</span></button></div>
       </form>
       <button class="auth-mode-switch" *ngIf="!isSignedIn() && authMode() === 'signup' && signupAvailable()" (click)="switchAuthMode('login')">Already set up? Sign in <span>→</span></button>
-      <button class="auth-mode-switch" *ngIf="!isSignedIn() && authMode() === 'login' && signupAvailable()" (click)="switchAuthMode('signup')">First time here? Create the owner account <span>→</span></button>
-      <p class="auth-footnote" *ngIf="!isSignedIn()">Only one owner account can be created. Registration closes automatically after setup.</p>
-      <div class="dialog-actions" *ngIf="isSignedIn()"><button class="cancel-button" (click)="showLogin.set(false)">Close</button><button class="delete-button" (click)="signOut(); showLogin.set(false)">Sign out</button></div>
+      <button class="auth-mode-switch" *ngIf="!isSignedIn() && authMode() === 'login' && signupAvailable()" (click)="switchAuthMode('signup')">New to TraceLens? Create an account <span>→</span></button>
+      <p class="auth-footnote" *ngIf="!isSignedIn() && authMode() === 'signup'">Accounts share the same workspace records and editing access. Your role describes your supply-chain position.</p>
+      <div class="dialog-actions" *ngIf="isSignedIn()"><button class="auth-mode-switch" *ngIf="signupAvailable()" (click)="startAccountSignup()">Create another account <span>→</span></button><button class="cancel-button" (click)="showLogin.set(false)">Close</button><button class="delete-button" (click)="signOut(); showLogin.set(false)">Sign out</button></div>
     </section>
   </div>
 
