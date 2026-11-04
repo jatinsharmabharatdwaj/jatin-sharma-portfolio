@@ -38,6 +38,7 @@ const ProductSchema = new mongoose.Schema({
   category: { type: String, default: 'Apparel · New product', maxlength: 80 },
   supplier: { type: String, default: '—', trim: true, maxlength: 120 },
   region: { type: String, default: '—', trim: true, maxlength: 80 },
+  receiver: { type: String, default: '—', trim: true, maxlength: 160 },
   status: { type: String, enum: ['Verified', 'In review', 'Needs evidence'], default: 'Needs evidence' },
   emissions: { type: Number, min: 0, default: 0 },
   emissionsSource: { type: String, default: '—' },
@@ -195,6 +196,7 @@ app.post('/api/products', requireOwner, async (req, res, next) => {
     const product = {
       id: newProductId(), name, category: cleanText(req.body.category, 80) || 'Apparel · New product',
       supplier: cleanText(req.body.supplier) || '—', region: cleanText(req.body.region, 80) || '—',
+      receiver: cleanText(req.body.receiver, 160) || '—',
       material: cleanText(req.body.material, 160) || '—', batch: cleanText(req.body.batch, 80) || '—',
       status: 'Needs evidence', emissions: 0, emissionsSource: '—', progress: 0, evidence: [],
     };
@@ -204,7 +206,7 @@ app.post('/api/products', requireOwner, async (req, res, next) => {
 });
 app.patch('/api/products/:id', requireOwner, async (req, res, next) => {
   try {
-    const fields = ['name', 'category', 'supplier', 'region', 'material', 'batch'];
+    const fields = ['name', 'category', 'supplier', 'region', 'receiver', 'material', 'batch'];
     const updates = Object.fromEntries(fields.filter((key) => req.body?.[key] !== undefined).map((key) => [key, cleanText(req.body[key], key === 'material' ? 160 : 120)]));
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide at least one editable product field.' });
     let product;
@@ -273,7 +275,7 @@ app.post('/api/ai/insights', async (req, res) => {
     const records = await listProducts();
     const q = question.toLowerCase();
     const relevant = records.filter((p) => [p.name, p.id, p.supplier, p.material, p.batch].some((value) => String(value || '').toLowerCase().includes(q)));
-    const context = (relevant.length ? relevant : records).slice(0, 12).map(({ id, name, supplier, region, status, emissions, emissionsSource, progress, batch, material, evidence }) => ({ id, name, supplier, region, status, emissions, emissionsSource, progress, batch, material, evidence: (evidence || []).map((item) => ({ kind: item.kind, title: item.title, reference: item.reference })) }));
+    const context = (relevant.length ? relevant : records).slice(0, 12) .map(({ id, name, supplier, region, receiver, status, emissions, emissionsSource, progress, batch, material, evidence }) => ({ id, name, supplier, region, receiver, status, emissions, emissionsSource, progress, batch, material, evidence: (evidence || []).map((item) => ({ kind: item.kind, title: item.title, reference: item.reference })) }));
     if (!process.env.OPENAI_API_KEY) return res.json({ answer: groundedDemoAnswer(question, records), sources: context.map((item) => item.id), mode: 'demo' });
     const response = await fetch(process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1/chat/completions', {
       method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
