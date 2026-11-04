@@ -33,3 +33,5 @@
 
 .auth-validation{display:block;margin:5px 0 0;color:var(--red);font-size:8px;line-height:1.45}
 .auth-card input.validation-invalid,.auth-card select.validation-invalid{border-color:var(--red)!important;box-shadow:0 0 0 1px #dc827b22}
+
+.auth-password-wrap{position:relative;display:block;margin-top:7px}.auth-password-wrap input{display:block;width:100%;padding-right:42px!important}.auth-password-wrap .password-visibility{position:absolute;top:50%;right:8px;display:grid;place-items:center;width:28px;height:28px;transform:translateY(-50%);border:0;border-radius:4px;background:transparent;color:var(--muted);cursor:pointer}.auth-password-wrap .password-visibility:hover{background:var(--panel-2);color:var(--text)}.auth-password-wrap .password-visibility svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
