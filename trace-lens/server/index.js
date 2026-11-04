@@ -53,6 +53,7 @@ const Product = mongoose.model('Product', ProductSchema);
 const OwnerSchema = new mongoose.Schema({
   _id: { type: String, default: 'owner' },
   email: { type: String, required: true, lowercase: true, trim: true, maxlength: 254 },
+  role: { type: String, enum: ['brand_owner', 'manufacturer', 'supplier', 'logistics_partner', 'retailer', 'other'], default: 'other' },
   passwordHash: { type: String, required: true },
 }, { versionKey: false, timestamps: true });
 const Owner = mongoose.model('Owner', OwnerSchema);
@@ -123,11 +124,14 @@ app.post('/api/auth/signup', async (req, res, next) => {
     if (await Owner.exists({ _id: 'owner' })) return res.status(409).json({ error: 'Owner registration is already complete. Sign in instead.' });
     const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    const role = typeof req.body?.role === 'string' ? req.body.role : '';
+    const allowedRoles = ['brand_owner', 'manufacturer', 'supplier', 'logistics_partner', 'retailer', 'other'];
     const setupCode = typeof req.body?.setupCode === 'string' ? req.body.setupCode : '';
     if (!emailIsValid(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+    if (!allowedRoles.includes(role)) return res.status(400).json({ error: 'Choose the role that best describes your work.' });
     if (password.length < 12 || password.length > 200) return res.status(400).json({ error: 'Choose a password between 12 and 200 characters.' });
     if (setupCode.length > 200 || !safeEqual(setupCode, process.env.WORKSPACE_PASSWORD)) return res.status(401).json({ error: 'The workspace setup key did not match.' });
-    await Owner.create({ _id: 'owner', email, passwordHash: await hashPassword(password) });
+    await Owner.create({ _id: 'owner', email, role, passwordHash: await hashPassword(password) });
     const expiresAt = Math.floor(Date.now() / 1000) + 8 * 60 * 60;
     res.status(201).json({ token: signToken({ sub: 'owner', exp: expiresAt }), expiresAt });
   } catch (error) {
