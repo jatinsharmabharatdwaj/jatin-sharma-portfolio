@@ -2,6 +2,7 @@ services:
   - type: web
     name: jatin-tracelens
     runtime: docker
+    region: singapore
     rootDir: trace-lens
     healthCheckPath: /api/status
     autoDeployTrigger: commit
