@@ -17,7 +17,7 @@
     </nav>
     <div class="sidebar-spacer"></div>
     <div class="sidebar-footnote"><span class="footnote-spark">✳</span><div><b>Better data.<br>Better decisions.</b><small>Built for transparent supply chains.</small></div></div>
-    <button class="user-profile" (click)="openLogin()"><span class="avatar">JS</span><span><b>Jatin Sharma</b><small>{{ isSignedIn() ? 'Workspace account · manage' : 'Viewer · sign in to edit' }}</small></span><span class="more">···</span></button>
+    <button class="user-profile" (click)="openLogin()"><span class="avatar">{{ isSignedIn() ? 'JS' : 'TL' }}</span><span><b>{{ isSignedIn() ? 'Jatin Sharma' : 'TraceLens visitor' }}</b><small>{{ isSignedIn() ? 'Workspace account · manage' : 'Viewer · sign in to edit' }}</small></span><span class="more">···</span></button>
   </aside>
 
   <main class="main-area">
