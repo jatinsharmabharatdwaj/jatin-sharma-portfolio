@@ -6,7 +6,7 @@ import { firstValueFrom } from 'rxjs';
 
 type Evidence = { _id?: string; kind: string; title: string; reference?: string; notes?: string; addedAt?: string };
 type Product = {
-  id: string; name: string; category: string; supplier: string; region: string;
+  id: string; name: string; category: string; supplier: string; region: string; receiver: string;
   status: 'Verified' | 'In review' | 'Needs evidence'; emissions: number; emissionsSource?: string;
   progress: number; color: string; batch: string; material: string; evidence?: Evidence[];
 };
@@ -57,6 +57,7 @@ export class App {
   readonly newProductMaterial = signal('');
   readonly newProductSupplier = signal('');
   readonly newProductRegion = signal('');
+  readonly newProductReceiver = signal('');
   readonly evidenceTitle = signal('');
   readonly evidenceKind = signal('material');
   readonly evidenceReference = signal('');
@@ -64,6 +65,7 @@ export class App {
   readonly editMaterial = signal('');
   readonly editSupplier = signal('');
   readonly editRegion = signal('');
+  readonly editReceiver = signal('');
   readonly editCategory = signal('');
   readonly editBatch = signal('');
   readonly chatInput = signal('');
@@ -73,7 +75,7 @@ export class App {
   readonly filteredProducts = computed(() => {
     const q = this.query().trim().toLowerCase();
     if (!q) return this.products();
-    return this.products().filter((p) => `${p.name} ${p.id} ${p.supplier} ${p.status} ${p.material} ${p.batch}`.toLowerCase().includes(q));
+    return this.products().filter((p) => `${p.name} ${p.id} ${p.supplier} ${p.receiver} ${p.status} ${p.material} ${p.batch}`.toLowerCase().includes(q));
   });
   readonly chartBars = computed(() => {
     const groups = new Map<string, number>();
@@ -125,7 +127,7 @@ export class App {
   toggleTheme() { this.isLight.update((value) => !value); }
   openProduct(product: Product) {
     this.selectedProduct.set(product); this.editName.set(product.name); this.editMaterial.set(product.material);
-    this.editSupplier.set(product.supplier); this.editRegion.set(product.region);
+    this.editSupplier.set(product.supplier); this.editRegion.set(product.region); this.editReceiver.set(product.receiver || '—');
     this.editCategory.set(product.category); this.editBatch.set(product.batch);
   }
   closeProduct() { this.selectedProduct.set(null); }
@@ -211,10 +213,10 @@ export class App {
     this.busy.set(true);
     try {
       const response = await firstValueFrom(this.http.post<{ product: Product }>(this.apiUrl('/api/products'), {
-        name, material: this.newProductMaterial().trim(), supplier: this.newProductSupplier().trim(), region: this.newProductRegion().trim(),
+        name, material: this.newProductMaterial().trim(), supplier: this.newProductSupplier().trim(), region: this.newProductRegion().trim(), receiver: this.newProductReceiver().trim(),
       }, this.authOptions()));
       this.products.update((items) => [response.product, ...items]);
-      this.showNewProduct.set(false); this.newProductName.set(''); this.newProductMaterial.set(''); this.newProductSupplier.set(''); this.newProductRegion.set('');
+      this.showNewProduct.set(false); this.newProductName.set(''); this.newProductMaterial.set(''); this.newProductSupplier.set(''); this.newProductRegion.set(''); this.newProductReceiver.set('');
       await this.refreshWorkspace(); this.showToast('Product saved to the workspace.');
     } catch (error: any) { if (error?.status === 401) { void this.openLogin(); this.showToast('Sign in to save workspace changes.'); } else this.showToast(error?.error?.error || 'Could not save the product. Check the API connection and try again.'); }
     finally { this.busy.set(false); }
@@ -232,7 +234,7 @@ export class App {
     this.busy.set(true);
     try {
       const response = await firstValueFrom(this.http.patch<{ product: Product }>(this.apiUrl(`/api/products/${encodeURIComponent(product.id)}`), {
-        name: this.editName(), category: this.editCategory(), material: this.editMaterial(), supplier: this.editSupplier(), region: this.editRegion(), batch: this.editBatch(),
+        name: this.editName(), category: this.editCategory(), material: this.editMaterial(), supplier: this.editSupplier(), region: this.editRegion(), receiver: this.editReceiver(), batch: this.editBatch(),
       }, this.authOptions()));
       this.selectedProduct.set(response.product); await this.refreshWorkspace();
       const updated = this.products().find((entry) => entry.id === product.id);
@@ -285,7 +287,7 @@ export class App {
   }
 
   exportCsv() {
-    const rows = [['Product ID', 'Product', 'Supplier', 'Region', 'Status', 'Footprint kg CO2e', 'Footprint source', 'Evidence coverage'], ...this.filteredProducts().map((p) => [p.id, p.name, p.supplier, p.region, p.status, String(p.emissions), p.emissionsSource || '', String(p.progress)])];
+    const rows = [['Product ID', 'Product', 'Supplier', 'Region', 'Receiver / Destination', 'Status', 'Footprint kg CO2e', 'Footprint source', 'Evidence coverage'], ...this.filteredProducts().map((p) => [p.id, p.name, p.supplier, p.region, p.receiver || '—', p.status, String(p.emissions), p.emissionsSource || '', String(p.progress)])];
     const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'tracelens-products.csv'; anchor.click(); URL.revokeObjectURL(url);
