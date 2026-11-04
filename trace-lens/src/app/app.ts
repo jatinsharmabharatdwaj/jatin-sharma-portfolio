@@ -14,6 +14,8 @@ type Supplier = { name: string; region: string; products: number; averageCoverag
 type Analytics = { productCount: number; footprintKg: number; coverage: number; supplierCount: number; openGaps: number; verified: number; mode: string };
 type ChatMessage = { role: 'assistant' | 'user'; text: string; sources?: string[]; mode?: string };
 type Factor = { id: string; name: string; category?: string; source?: string; year?: number; unit_type?: string };
+type Account = { email: string; role: string };
+type Order = { id: string; senderEmail: string; senderRole: string; recipientEmail: string; recipientRole: string; productName: string; quantity: number; unit: string; notes: string; status: string; updatedAt: string };
 
 const EMPTY_ANALYTICS: Analytics = { productCount: 0, footprintKg: 0, coverage: 0, supplierCount: 0, openGaps: 0, verified: 0, mode: 'offline' };
 
@@ -39,6 +41,14 @@ export class App {
   readonly authRole = signal('');
   readonly authBusy = signal(false);
   readonly authError = signal('');
+  readonly account = signal<Account | null>(null);
+  readonly orders = signal<Order[]>([]);
+  readonly orderProduct = signal('');
+  readonly orderRecipient = signal('');
+  readonly orderQuantity = signal('1');
+  readonly orderUnit = signal('units');
+  readonly orderNotes = signal('');
+  readonly orderBusy = signal(false);
   readonly factorQuery = signal('');
   readonly factorResults = signal<Factor[]>([]);
   readonly selectedFactorId = signal('');
@@ -46,7 +56,7 @@ export class App {
   readonly products = signal<Product[]>([]);
   readonly suppliers = signal<Supplier[]>([]);
   readonly analytics = signal<Analytics>(EMPTY_ANALYTICS);
-  readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact'>('overview');
+  readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact' | 'orders'>('overview');
   readonly query = signal('');
   readonly isLight = signal(false);
   readonly isThinking = signal(false);
@@ -96,6 +106,7 @@ export class App {
 
   constructor() {
     try { this.isSignedIn.set(Boolean(localStorage.getItem('tracelens-owner-token'))); } catch {}
+    if (this.isSignedIn()) { void this.loadAccount(); void this.loadOrders(); }
     void this.refreshWorkspace();
   }
 
@@ -124,7 +135,11 @@ export class App {
     }
   }
 
-  navTo(view: 'overview' | 'products' | 'suppliers' | 'impact') { this.activeView.set(view); }
+  navTo(view: 'overview' | 'products' | 'suppliers' | 'impact' | 'orders') {
+    if (view === 'orders' && !this.isSignedIn()) { void this.openLogin(); return; }
+    this.activeView.set(view);
+    if (view === 'orders') void this.loadOrders();
+  }
   toggleTheme() { this.isLight.update((value) => !value); }
   openProduct(product: Product) {
     this.selectedProduct.set(product); this.editName.set(product.name); this.editMaterial.set(product.material);
@@ -177,6 +192,8 @@ export class App {
     this.authPassword.set('');
     this.authSetupKey.set('');
     this.authError.set('');
+    void this.loadAccount();
+    void this.loadOrders();
   }
 
   async signIn() {
@@ -210,8 +227,65 @@ export class App {
     finally { this.authBusy.set(false); }
   }
 
+  async loadAccount() {
+    if (!this.isSignedIn()) return;
+    try {
+      const account = await firstValueFrom(this.http.get<Account>(this.apiUrl('/api/auth/me'), this.authOptions()));
+      this.account.set(account);
+    } catch {
+      this.account.set(null);
+    }
+  }
+
+  async loadOrders() {
+    if (!this.isSignedIn()) { this.orders.set([]); return; }
+    try {
+      const result = await firstValueFrom(this.http.get<{ orders: Order[] }>(this.apiUrl('/api/orders'), this.authOptions()));
+      this.orders.set(result.orders || []);
+    } catch { this.orders.set([]); }
+  }
+
+  canPlaceOrders() { return ['brand_owner', 'retailer'].includes(this.account()?.role || ''); }
+
+  canUpdateOrder(order: Order, status: string) {
+    if (order.recipientEmail.toLowerCase() !== (this.account()?.email || '').toLowerCase()) return false;
+    const role = this.account()?.role;
+    const actions: Record<string, string[]> = {
+      supplier: ['Accepted', 'Ready to ship', 'Rejected'],
+      manufacturer: ['Accepted', 'In production', 'Ready to ship', 'Rejected'],
+      logistics_partner: ['In transit', 'Delivered'],
+    };
+    return actions[role || '']?.includes(status) || false;
+  }
+
+  async sendOrder() {
+    if (!this.canPlaceOrders()) { this.showToast('Your role cannot place orders.'); return; }
+    const quantity = Number(this.orderQuantity());
+    if (!this.orderRecipient().trim() || !this.orderProduct().trim() || !Number.isFinite(quantity) || quantity <= 0 || !this.orderUnit().trim() || this.orderBusy()) return;
+    this.orderBusy.set(true);
+    try {
+      await firstValueFrom(this.http.post(this.apiUrl('/api/orders'), {
+        recipientEmail: this.orderRecipient(), productName: this.orderProduct(), quantity,
+        unit: this.orderUnit(), notes: this.orderNotes(),
+      }, this.authOptions()));
+      this.orderProduct.set(''); this.orderRecipient.set(''); this.orderQuantity.set('1'); this.orderNotes.set('');
+      await this.loadOrders();
+      this.showToast('Order sent.');
+    } catch (error: any) { this.showToast(error?.error?.error || 'Could not send this order.'); }
+    finally { this.orderBusy.set(false); }
+  }
+
+  async updateOrder(order: Order, status: string) {
+    if (!this.canUpdateOrder(order, status)) return;
+    try {
+      await firstValueFrom(this.http.patch(this.apiUrl(`/api/orders/${encodeURIComponent(order.id)}/status`), { status }, this.authOptions()));
+      await this.loadOrders();
+      this.showToast(`Order marked ${status.toLowerCase()}.`);
+    } catch (error: any) { this.showToast(error?.error?.error || 'Could not update this order.'); }
+  }
+
   signOut() {
-    localStorage.removeItem('tracelens-owner-token'); this.isSignedIn.set(false); this.showToast('Signed out. Workspace stays in read-only mode.');
+    localStorage.removeItem('tracelens-owner-token'); this.isSignedIn.set(false); this.account.set(null); this.orders.set([]); this.showToast('Signed out. Workspace stays in read-only mode.');
   }
 
   openCreateProduct() {
