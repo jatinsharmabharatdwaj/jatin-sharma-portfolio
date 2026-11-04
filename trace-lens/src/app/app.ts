@@ -36,6 +36,7 @@ export class App {
   readonly authEmail = signal('');
   readonly authPassword = signal('');
   readonly authSetupKey = signal('');
+  readonly authRole = signal('');
   readonly authBusy = signal(false);
   readonly authError = signal('');
   readonly factorQuery = signal('');
@@ -184,12 +185,13 @@ export class App {
     const email = this.authEmail().trim().toLowerCase();
     const password = this.authPassword();
     const setupCode = this.authSetupKey();
-    if (!email || !password || !setupCode || this.authBusy()) return;
+    const role = this.authRole();
+    if (!email || !password || !setupCode || !role || this.authBusy()) return;
     if (password.length < 12) { this.authError.set('Choose a password with at least 12 characters.'); return; }
     this.authBusy.set(true);
     this.authError.set('');
     try {
-      const result = await firstValueFrom(this.http.post<{ token: string }>(this.apiUrl('/api/auth/signup'), { email, password, setupCode }));
+      const result = await firstValueFrom(this.http.post<{ token: string }>(this.apiUrl('/api/auth/signup'), { email, password, setupCode, role }));
       this.signupAvailable.set(false);
       this.completeSignIn(result.token);
       this.showToast('Owner account created. Workspace editing is ready.');
