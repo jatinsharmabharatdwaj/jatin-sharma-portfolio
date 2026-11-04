@@ -245,6 +245,10 @@ export class App {
     } catch { this.orders.set([]); }
   }
 
+  roleName(role = this.account()?.role || '') {
+    return ({ brand_owner: 'Brand / product owner', manufacturer: 'Manufacturer', supplier: 'Supplier', logistics_partner: 'Logistics partner', retailer: 'Retailer / customer', other: 'Other' } as Record<string, string>)[role] || role;
+  }
+
   canPlaceOrders() { return ['brand_owner', 'retailer'].includes(this.account()?.role || ''); }
 
   canUpdateOrder(order: Order, status: string) {
