@@ -41,6 +41,7 @@ export class App {
   readonly authRole = signal('');
   readonly authBusy = signal(false);
   readonly authError = signal('');
+  readonly authSubmitted = signal(false);
   readonly account = signal<Account | null>(null);
   readonly orders = signal<Order[]>([]);
   readonly orderProduct = signal('');
@@ -157,6 +158,7 @@ export class App {
   }
 
   async openLogin() {
+    this.authSubmitted.set(false);
     this.authMode.set('login');
     this.authError.set('');
     this.showLogin.set(true);
@@ -169,6 +171,7 @@ export class App {
 
   switchAuthMode(mode: 'login' | 'signup') {
     if (mode === 'signup' && !this.signupAvailable()) return;
+    this.authSubmitted.set(false);
     this.authMode.set(mode);
     this.authError.set('');
     this.authPassword.set('');
@@ -199,9 +202,10 @@ export class App {
   }
 
   async signIn() {
+    this.authSubmitted.set(true);
     const email = this.authEmail().trim().toLowerCase();
     const password = this.authPassword();
-    if (!email || !password || this.authBusy()) return;
+    if (!this.isEmailValid(email) || !password || this.authBusy()) return;
     this.authBusy.set(true);
     this.authError.set('');
     try {
@@ -213,11 +217,12 @@ export class App {
   }
 
   async signUp() {
+    this.authSubmitted.set(true);
     const email = this.authEmail().trim().toLowerCase();
     const password = this.authPassword();
     const setupCode = this.authSetupKey();
     const role = this.authRole();
-    if (!email || !password || !setupCode || !role || this.authBusy()) return;
+    if (!this.isEmailValid(email) || !password || !setupCode || !role || this.authBusy()) return;
     if (password.length < 12) { this.authError.set('Choose a password with at least 12 characters.'); return; }
     this.authBusy.set(true);
     this.authError.set('');
