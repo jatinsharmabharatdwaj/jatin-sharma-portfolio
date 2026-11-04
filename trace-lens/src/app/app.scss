@@ -30,3 +30,6 @@
 .order-card p { color: var(--sub); font-size: 12px; }
 .order-actions { justify-content: flex-start; flex-wrap: wrap; margin-top: 16px; }
 @media (max-width: 700px) { .order-form-grid { grid-template-columns: 1fr 1fr; } .order-compose { padding: 14px; } }
+
+.auth-validation{display:block;margin:5px 0 0;color:var(--red);font-size:8px;line-height:1.45}
+.auth-card input.validation-invalid,.auth-card select.validation-invalid{border-color:var(--red)!important;box-shadow:0 0 0 1px #dc827b22}
