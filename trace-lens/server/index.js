@@ -51,8 +51,8 @@ const ProductSchema = new mongoose.Schema({
 }, { versionKey: false });
 const Product = mongoose.model('Product', ProductSchema);
 const OwnerSchema = new mongoose.Schema({
-  _id: { type: String, default: 'owner' },
-  email: { type: String, required: true, lowercase: true, trim: true, maxlength: 254 },
+  _id: { type: String, default: () => crypto.randomUUID() },
+  email: { type: String, required: true, lowercase: true, trim: true, maxlength: 254, unique: true },
   role: { type: String, enum: ['brand_owner', 'manufacturer', 'supplier', 'logistics_partner', 'retailer', 'other'], default: 'other' },
   passwordHash: { type: String, required: true },
 }, { versionKey: false, timestamps: true });
@@ -107,13 +107,13 @@ function requireOwner(req, res, next) {
     const supplied = Buffer.from(signature, 'base64url');
     if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) throw new Error('signature');
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
-    if (payload.sub !== 'owner' || payload.exp < Date.now() / 1000) throw new Error('expiry');
+    if (typeof payload.sub !== 'string' || !payload.sub || payload.exp < Date.now() / 1000) throw new Error('expiry');
     next();
   } catch { res.status(401).json({ error: 'Your session expired. Sign in again.' }); }
 }
 app.get('/api/auth/setup-status', async (_req, res, next) => {
   try {
-    const signupAvailable = Boolean(databaseReady && process.env.WORKSPACE_PASSWORD && process.env.JWT_SECRET && !(await Owner.exists({ _id: 'owner' })));
+    const signupAvailable = Boolean(databaseReady && process.env.WORKSPACE_PASSWORD && process.env.JWT_SECRET);
     res.json({ signupAvailable });
   } catch (error) { next(error); }
 });
@@ -121,7 +121,7 @@ app.post('/api/auth/signup', async (req, res, next) => {
   try {
     if (!process.env.WORKSPACE_PASSWORD || !process.env.JWT_SECRET) return res.status(503).json({ error: 'Owner setup is not configured on this server.' });
     if (!databaseReady) return res.status(503).json({ error: 'The persistent database is unavailable. Try again when the workspace reconnects.' });
-    if (await Owner.exists({ _id: 'owner' })) return res.status(409).json({ error: 'Owner registration is already complete. Sign in instead.' });
+
     const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     const role = typeof req.body?.role === 'string' ? req.body.role : '';
@@ -131,11 +131,11 @@ app.post('/api/auth/signup', async (req, res, next) => {
     if (!allowedRoles.includes(role)) return res.status(400).json({ error: 'Choose the role that best describes your work.' });
     if (password.length < 12 || password.length > 200) return res.status(400).json({ error: 'Choose a password between 12 and 200 characters.' });
     if (setupCode.length > 200 || !safeEqual(setupCode, process.env.WORKSPACE_PASSWORD)) return res.status(401).json({ error: 'The workspace setup key did not match.' });
-    await Owner.create({ _id: 'owner', email, role, passwordHash: await hashPassword(password) });
+    const account = await Owner.create({ email, role, passwordHash: await hashPassword(password) });
     const expiresAt = Math.floor(Date.now() / 1000) + 8 * 60 * 60;
-    res.status(201).json({ token: signToken({ sub: 'owner', exp: expiresAt }), expiresAt });
+    res.status(201).json({ token: signToken({ sub: account._id, exp: expiresAt }), expiresAt });
   } catch (error) {
-    if (error?.code === 11000) return res.status(409).json({ error: 'Owner registration has already been completed. Sign in instead.' });
+    if (error?.code === 11000) return res.status(409).json({ error: 'An account with this email already exists.' });
     next(error);
   }
 });
@@ -146,14 +146,16 @@ app.post('/api/auth/login', async (req, res, next) => {
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     if (!emailIsValid(email) || !password || password.length > 200) return res.status(401).json({ error: 'Email or password did not match.' });
     if (process.env.MONGODB_URI && !databaseReady) return res.status(503).json({ error: 'The persistent database is unavailable. Try again when the workspace reconnects.' });
+    let accountId = 'owner';
     if (databaseReady) {
-      const owner = await Owner.findById('owner').lean();
-      if (!owner || email !== owner.email || !(await verifyPassword(password, owner.passwordHash))) return res.status(401).json({ error: 'Email or password did not match.' });
+      const account = await Owner.findOne({ email }).lean();
+      if (!account || !(await verifyPassword(password, account.passwordHash))) return res.status(401).json({ error: 'Email or password did not match.' });
+      accountId = String(account._id);
     } else {
       if (!process.env.WORKSPACE_PASSWORD || !safeEqual(password, process.env.WORKSPACE_PASSWORD)) return res.status(401).json({ error: 'Email or password did not match.' });
     }
     const expiresAt = Math.floor(Date.now() / 1000) + 8 * 60 * 60;
-    res.json({ token: signToken({ sub: 'owner', exp: expiresAt }), expiresAt });
+    res.json({ token: signToken({ sub: accountId, exp: expiresAt }), expiresAt });
   } catch (error) { next(error); }
 });
 app.get('/api/analytics', async (_req, res, next) => {
