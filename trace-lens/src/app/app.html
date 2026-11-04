@@ -8,6 +8,7 @@
       <button [class.active]="activeView() === 'products'" (click)="navTo('products')"><span class="nav-icon">▦</span> Products <span class="nav-count">{{ analytics().productCount }}</span></button>
       <button [class.active]="activeView() === 'suppliers'" (click)="navTo('suppliers')"><span class="nav-icon">⌘</span> Suppliers <span class="nav-count">{{ suppliers().length }}</span></button>
       <button [class.active]="activeView() === 'impact'" (click)="navTo('impact')"><span class="nav-icon">◉</span> Impact data <span class="nav-count">{{ analytics().verified }}</span></button>
+      <button *ngIf="isSignedIn()" [class.active]="activeView() === 'orders'" (click)="navTo('orders')"><span class="nav-icon">↗</span> Orders <span class="nav-count">{{ orders().length }}</span></button>
     </nav>
     <div class="nav-label tools-label">TOOLS</div>
     <nav class="side-nav">
@@ -39,14 +40,41 @@
         <div class="intro-actions"><div class="period-select"><span class="calendar-icon">▦</span> Workspace snapshot <span>⌄</span></div><button class="primary-button" (click)="openCreateProduct()"><span>＋</span> New product</button></div>
       </section>
 
-      <section class="metric-grid" aria-label="Impact summary">
+      <section class="panel products-panel" *ngIf="activeView() === 'orders'">
+        <div class="panel-heading products-heading"><div><div class="panel-kicker"><span class="heading-spark">↗</span> ROLE-BASED ORDER FLOW</div><h2>Orders for your role <span class="count-pill">{{ orders().length }}</span></h2><p class="order-role-note">{{ roleName() }} · {{ canPlaceOrders() ? 'Place and send orders to a registered supplier, manufacturer, or logistics partner.' : 'Review orders addressed to your account and take the actions available to your role.' }}</p></div></div>
+        <form class="order-compose" *ngIf="canPlaceOrders()" (ngSubmit)="sendOrder()">
+          <h3>Send an order</h3>
+          <div class="order-form-grid"><label>RECIPIENT ACCOUNT EMAIL<input type="email" [ngModel]="orderRecipient()" (ngModelChange)="orderRecipient.set($event)" name="recipientEmail" placeholder="partner@example.com" required></label><label>PRODUCT OR MATERIAL<input [ngModel]="orderProduct()" (ngModelChange)="orderProduct.set($event)" name="productName" placeholder="e.g. Organic cotton fabric" required maxlength="120"></label><label>QUANTITY<input type="number" min="0.01" step="any" [ngModel]="orderQuantity()" (ngModelChange)="orderQuantity.set($event)" name="quantity" required></label><label>UNIT<input [ngModel]="orderUnit()" (ngModelChange)="orderUnit.set($event)" name="unit" placeholder="kg, units, rolls…" required maxlength="30"></label></div>
+          <label>ORDER NOTES<input [ngModel]="orderNotes()" (ngModelChange)="orderNotes.set($event)" name="notes" placeholder="Delivery date, specification, or instructions" maxlength="500"></label>
+          <button class="primary-button" type="submit" [disabled]="orderBusy() || !orderRecipient().trim() || !orderProduct().trim()">{{ orderBusy() ? 'Sending…' : 'Send order' }} <span>→</span></button>
+        </form>
+        <div class="order-cards" *ngIf="orders().length">
+          <article class="order-card" *ngFor="let order of orders()">
+            <div class="order-card-head"><span class="panel-kicker">ORDER · {{ order.id }}</span><span class="status-pill" [class.verified]="order.status === 'Delivered' || order.status === 'Ready to ship'" [class.review]="order.status === 'Accepted' || order.status === 'In production' || order.status === 'In transit'" [class.missing]="order.status === 'Pending' || order.status === 'Rejected'"><i></i>{{ order.status }}</span></div>
+            <h3>{{ order.productName }}</h3><b class="order-quantity">{{ order.quantity }} {{ order.unit }}</b>
+            <div class="order-parties"><span><small>FROM</small><b>{{ order.senderEmail }}</b><small>{{ roleName(order.senderRole) }}</small></span><span><small>TO</small><b>{{ order.recipientEmail }}</b><small>{{ roleName(order.recipientRole) }}</small></span></div>
+            <p *ngIf="order.notes">{{ order.notes }}</p>
+            <div class="order-actions">
+              <button class="cancel-button" *ngIf="canUpdateOrder(order, 'Accepted')" (click)="updateOrder(order, 'Accepted')">Accept</button>
+              <button class="cancel-button" *ngIf="canUpdateOrder(order, 'In production')" (click)="updateOrder(order, 'In production')">Start production</button>
+              <button class="cancel-button" *ngIf="canUpdateOrder(order, 'Ready to ship')" (click)="updateOrder(order, 'Ready to ship')">Ready to ship</button>
+              <button class="cancel-button" *ngIf="canUpdateOrder(order, 'In transit')" (click)="updateOrder(order, 'In transit')">Mark in transit</button>
+              <button class="primary-button" *ngIf="canUpdateOrder(order, 'Delivered')" (click)="updateOrder(order, 'Delivered')">Mark delivered <span>✓</span></button>
+              <button class="delete-button" *ngIf="canUpdateOrder(order, 'Rejected')" (click)="updateOrder(order, 'Rejected')">Decline</button>
+            </div>
+          </article>
+        </div>
+        <p class="empty-row" *ngIf="orders().length === 0">No orders yet. Orders sent to your account will appear here.</p>
+      </section>
+
+      <section class="metric-grid" *ngIf="activeView() !== 'orders'" aria-label="Impact summary">
         <article class="metric-card metric-primary"><div class="metric-heading"><span>RECORDED FOOTPRINT</span><span class="metric-icon">◉</span></div><div class="metric-value">{{ (analytics().footprintKg / 1000) | number:'1.2-2' }} <small>tCO₂e</small></div><div class="metric-bottom"><span class="trend-down">{{ analytics().productCount }} products</span><span>summed from workspace records</span></div></article>
         <article class="metric-card"><div class="metric-heading"><span>EVIDENCE COVERAGE</span><span class="metric-icon green-icon">⌖</span></div><div class="metric-value">{{ analytics().coverage }}<small>%</small></div><div class="metric-bottom"><span class="trend-up">{{ analytics().verified }} verified</span><span>product records</span><div class="mini-progress"><i [style.width.%]="analytics().coverage"></i></div></div></article>
         <article class="metric-card"><div class="metric-heading"><span>ACTIVE SUPPLIERS</span><span class="metric-icon amber-icon">▤</span></div><div class="metric-value">{{ analytics().supplierCount }} <small>partners</small></div><div class="metric-bottom"><span class="neutral-count">{{ products().length }}</span><span>linked product records</span><div class="mini-progress amber-progress"><i [style.width.%]="analytics().supplierCount ? 100 : 0"></i></div></div></article>
         <article class="metric-card"><div class="metric-heading"><span>OPEN EVIDENCE GAPS</span><span class="metric-icon red-icon">⌁</span></div><div class="metric-value">{{ analytics().openGaps | number:'2.0-0' }} <small>products</small></div><div class="metric-bottom"><span class="gap-copy"><i></i> Below 80% coverage</span><button class="small-arrow" (click)="navTo('products')" aria-label="Review gaps">↗</button></div></article>
       </section>
 
-      <section class="analysis-grid">
+      <section class="analysis-grid" *ngIf="activeView() !== 'orders'">
         <article class="panel impact-panel">
           <div class="panel-heading"><div><div class="panel-kicker"><span class="heading-spark">✳</span> LIVE IMPACT DATA</div><h2>Footprint by material</h2></div><button class="select-control" (click)="navTo('impact')">{{ apiState() === 'online' ? 'Workspace data' : 'Waiting for API' }} <span>⌄</span></button></div>
           <div class="chart-summary"><b>{{ analytics().footprintKg | number:'1.0-2' }} <small>kg CO₂e</small></b><span class="chart-legend"><i></i> Current workspace</span></div>
@@ -63,7 +91,7 @@
         </article>
       </section>
 
-      <section class="panel products-panel" *ngIf="activeView() !== 'suppliers'">
+      <section class="panel products-panel" *ngIf="activeView() !== 'suppliers' && activeView() !== 'orders'">
         <div class="panel-heading products-heading"><div><div class="panel-kicker"><span class="heading-spark">◈</span> PRODUCT PASSPORTS</div><h2>Products in your portfolio <span class="count-pill">{{ filteredProducts().length }}</span></h2></div><div class="product-actions"><label class="table-search"><span>⌕</span><input placeholder="Filter products…" [ngModel]="query()" (ngModelChange)="query.set($event)" aria-label="Filter products"></label><button class="table-menu" (click)="exportCsv()"><span>⇩</span> Export <span>⌄</span></button><button class="view-all" (click)="navTo('products')">View all <span>→</span></button></div></div>
         <div class="table-wrap"><table><thead><tr><th>PRODUCT</th><th>SUPPLIER / ORIGIN</th><th>RECEIVER / DESTINATION</th><th>TRACEABILITY</th><th>FOOTPRINT <span class="sort-icon">↕</span></th><th>STATUS</th><th></th></tr></thead><tbody><tr *ngFor="let product of filteredProducts()" (click)="openProduct(product)"><td><div class="product-cell"><span class="product-swatch" [style.background]="product.color"><i></i></span><span><b>{{ product.name }}</b><small>{{ product.id }} <span>·</span> {{ product.category }}</small></span></div></td><td><div class="supplier-cell"><b>{{ product.supplier }}</b><small><span class="location-dot">⌖</span> {{ product.region }}</small></div></td><td><div class="supplier-cell"><b>{{ product.receiver || '—' }}</b></div></td><td><div class="trace-cell"><div class="trace-track"><i [style.width.%]="product.progress"></i></div><span>{{ product.progress }}%</span></div></td><td><b class="co2-value">{{ product.emissions | number:'1.2-2' }} <small>kg</small></b></td><td><span class="status-pill" [class.verified]="product.status === 'Verified'" [class.review]="product.status === 'In review'" [class.missing]="product.status === 'Needs evidence'"><i></i>{{ product.status }}</span></td><td><button class="row-open" aria-label="Open product passport" (click)="$event.stopPropagation(); openProduct(product)">↗</button></td></tr><tr *ngIf="filteredProducts().length === 0"><td colspan="7" class="empty-row">No products match that search.</td></tr></tbody></table></div>
         <div class="table-footer"><span>Showing <b>{{ filteredProducts().length }}</b> of <b>{{ products().length }}</b> workspace products</span><span>{{ databaseMode() === 'mongodb' ? 'MongoDB · saved records' : databaseMode() === 'session-demo' ? 'Demo server · session only' : 'Waiting for API connection' }}</span></div>
