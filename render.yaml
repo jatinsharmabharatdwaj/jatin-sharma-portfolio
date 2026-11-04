@@ -4,7 +4,7 @@ services:
     runtime: docker
     rootDir: trace-lens
     healthCheckPath: /api/status
-    autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       - key: PORT
         value: 4000
