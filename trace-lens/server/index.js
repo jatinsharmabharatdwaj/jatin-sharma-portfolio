@@ -57,6 +57,19 @@ const OwnerSchema = new mongoose.Schema({
   passwordHash: { type: String, required: true },
 }, { versionKey: false, timestamps: true });
 const Owner = mongoose.model('Owner', OwnerSchema);
+const OrderSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  senderEmail: { type: String, required: true, lowercase: true, trim: true },
+  senderRole: { type: String, required: true },
+  recipientEmail: { type: String, required: true, lowercase: true, trim: true },
+  recipientRole: { type: String, required: true },
+  productName: { type: String, required: true, trim: true, maxlength: 120 },
+  quantity: { type: Number, required: true, min: 0.01 },
+  unit: { type: String, required: true, trim: true, maxlength: 30 },
+  notes: { type: String, trim: true, maxlength: 500, default: '' },
+  status: { type: String, enum: ['Pending', 'Accepted', 'In production', 'Ready to ship', 'In transit', 'Delivered', 'Rejected'], default: 'Pending' },
+}, { versionKey: false, timestamps: true });
+const Order = mongoose.model('Order', OrderSchema);
 
 const demoProducts = []; // Empty until the workspace owner adds records.
 let databaseReady = false;
@@ -97,10 +110,10 @@ function signToken(payload) {
   const signature = crypto.createHmac('sha256', process.env.JWT_SECRET).update(`${head}.${body}`).digest('base64url');
   return `${head}.${body}.${signature}`;
 }
-function requireOwner(req, res, next) {
+async function requireOwner(req, res, next) {
   if (!ownerEditingConfigured()) return res.status(503).json({ error: 'Workspace editing is not configured on this server.' });
-  const token = req.headers.authorization?.match(/^Bearer ([\w.-]+)$/)?.[1];
-  if (!token) return res.status(401).json({ error: 'Sign in to edit workspace records.' });
+  const token = req.headers.authorization?.match(/^Bearer ([\\w.-]+)$/)?.[1];
+  if (!token) return res.status(401).json({ error: 'Sign in to use workspace actions.' });
   try {
     const [head, body, signature] = token.split('.');
     const expected = crypto.createHmac('sha256', process.env.JWT_SECRET).update(`${head}.${body}`).digest();
@@ -108,6 +121,11 @@ function requireOwner(req, res, next) {
     if (supplied.length !== expected.length || !crypto.timingSafeEqual(supplied, expected)) throw new Error('signature');
     const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
     if (typeof payload.sub !== 'string' || !payload.sub || payload.exp < Date.now() / 1000) throw new Error('expiry');
+    const account = databaseReady ? await Owner.findById(payload.sub).select('email role').lean() : null;
+    req.account = account
+      ? { email: account.email, role: account.role || (String(account._id) === 'owner' ? 'brand_owner' : 'other') }
+      : { email: 'owner@local', role: payload.role || 'brand_owner' };
+    if (databaseReady && !account) throw new Error('account');
     next();
   } catch { res.status(401).json({ error: 'Your session expired. Sign in again.' }); }
 }
@@ -158,6 +176,56 @@ app.post('/api/auth/login', async (req, res, next) => {
     res.json({ token: signToken({ sub: accountId, exp: expiresAt }), expiresAt });
   } catch (error) { next(error); }
 });
+app.get('/api/auth/me', requireOwner, (req, res) => res.json({ email: req.account.email, role: req.account.role }));
+
+app.get('/api/orders', requireOwner, async (req, res, next) => {
+  try {
+    const email = req.account.email.toLowerCase();
+    const orders = databaseReady ? await Order.find({ $or: [{ senderEmail: email }, { recipientEmail: email }] }).sort({ updatedAt: -1 }).lean() : [];
+    res.json({ orders });
+  } catch (error) { next(error); }
+});
+app.post('/api/orders', requireOwner, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const recipientEmail = typeof body.recipientEmail === 'string' ? body.recipientEmail.trim().toLowerCase() : '';
+    const productName = cleanText(body.productName, 120);
+    const quantity = Number(body.quantity);
+    const unit = cleanText(body.unit, 30);
+    const notes = cleanText(body.notes, 500);
+    const senderRole = req.account.role || 'other';
+    if (!['brand_owner', 'retailer'].includes(senderRole)) return res.status(403).json({ error: 'Your role can receive and process orders, but cannot place them.' });
+    if (!emailIsValid(recipientEmail) || !productName || !unit || !Number.isFinite(quantity) || quantity <= 0) return res.status(400).json({ error: 'Enter a recipient, product, positive quantity, and unit.' });
+    if (!databaseReady) return res.status(503).json({ error: 'Orders need the connected database.' });
+    const recipient = await Owner.findOne({ email: recipientEmail }).select('email role').lean();
+    if (!recipient) return res.status(404).json({ error: 'That recipient needs to create a TraceLens account before you can send the order.' });
+    if (!['supplier', 'manufacturer', 'logistics_partner'].includes(recipient.role)) return res.status(400).json({ error: 'Choose a supplier, manufacturer, or logistics partner as the order recipient.' });
+    const order = await Order.create({
+      id: 'ORD-' + Date.now().toString(36).toUpperCase() + '-' + crypto.randomBytes(2).toString('hex').toUpperCase(),
+      senderEmail: req.account.email, senderRole, recipientEmail, recipientRole: recipient.role,
+      productName, quantity, unit, notes, status: 'Pending',
+    });
+    res.status(201).json({ order });
+  } catch (error) { next(error); }
+});
+app.patch('/api/orders/:id/status', requireOwner, async (req, res, next) => {
+  try {
+    const status = typeof req.body?.status === 'string' ? req.body.status : '';
+    const order = databaseReady ? await Order.findOne({ id: req.params.id, recipientEmail: req.account.email.toLowerCase() }) : null;
+    if (!order) return res.status(404).json({ error: 'Incoming order not found.' });
+    const role = req.account.role || 'other';
+    const allowed = {
+      supplier: ['Accepted', 'Ready to ship', 'Rejected'],
+      manufacturer: ['Accepted', 'In production', 'Ready to ship', 'Rejected'],
+      logistics_partner: ['In transit', 'Delivered'],
+    };
+    if (!allowed[role]?.includes(status)) return res.status(403).json({ error: 'That action is not available for your role.' });
+    order.status = status;
+    await order.save();
+    res.json({ order });
+  } catch (error) { next(error); }
+});
+
 app.get('/api/analytics', async (_req, res, next) => {
   try {
     const products = await listProducts();
