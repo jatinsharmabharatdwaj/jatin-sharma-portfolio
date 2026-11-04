@@ -1,2 +1,2 @@
-// Set this to the deployed API origin when hosting the backend separately.
-window.TRACELENS_API_BASE = '';
+// Public API origin for the deployed TraceLens backend.
+window.TRACELENS_API_BASE = 'https://jatin-tracelens.onrender.com';
