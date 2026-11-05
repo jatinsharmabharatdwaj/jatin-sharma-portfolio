@@ -19,6 +19,7 @@ type Account = { email: string; role: string };
 type OrderEvent = { status: string; actorEmail?: string; actorRole?: string; occurredAt?: string; note?: string };
 type Order = { id: string; senderEmail: string; senderRole: string; recipientEmail: string; recipientRole: string; productName: string; quantity: number; unit: string; notes: string; status: string; updatedAt: string; createdAt?: string; events?: OrderEvent[] };
 type EvidenceEntry = Evidence & { sourceType: 'Product' | 'Supplier'; sourceId: string; sourceName: string; sourceDetail: string };
+type AuditEntry = { _id?: string; actorEmail: string; actorRole: string; action: string; entityType: string; entityId?: string; entityName?: string; summary?: string; occurredAt: string };
 
 const EMPTY_ANALYTICS: Analytics = { productCount: 0, footprintKg: 0, coverage: 0, supplierCount: 0, openGaps: 0, verified: 0, mode: 'offline' };
 
@@ -48,6 +49,10 @@ export class App {
   readonly authSubmitted = signal(false);
   readonly account = signal<Account | null>(null);
   readonly orders = signal<Order[]>([]);
+  readonly auditEntries = signal<AuditEntry[]>([]);
+  readonly auditQuery = signal('');
+  readonly auditLoading = signal(false);
+  readonly filteredAuditEntries = computed(() => { const q = this.auditQuery().trim().toLowerCase(); return this.auditEntries().filter((entry) => !q || `${entry.actorEmail} ${entry.actorRole} ${entry.action} ${entry.entityType} ${entry.entityName || ''} ${entry.summary || ''}`.toLowerCase().includes(q)); });
   readonly orderProduct = signal('');
   readonly orderRecipient = signal('');
   readonly orderQuantity = signal('1');
@@ -99,7 +104,7 @@ export class App {
   readonly supplierEvidenceReference = signal('');
   readonly supplierEvidenceBusy = signal(false);
   readonly analytics = signal<Analytics>(EMPTY_ANALYTICS);
-  readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact' | 'orders' | 'evidence' | 'traceability'>('overview');
+  readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact' | 'orders' | 'evidence' | 'traceability' | 'audit'>('overview');
   readonly query = signal('');
   readonly evidenceQuery = signal('');
   readonly evidenceReviewFilter = signal<'All' | EvidenceReviewStatus>('All');
@@ -195,10 +200,11 @@ export class App {
     }
   }
 
-  navTo(view: 'overview' | 'products' | 'suppliers' | 'impact' | 'orders' | 'evidence' | 'traceability') {
-    if (view === 'orders' && !this.isSignedIn()) { void this.openLogin(); return; }
+  navTo(view: 'overview' | 'products' | 'suppliers' | 'impact' | 'orders' | 'evidence' | 'traceability' | 'audit') {
+    if ((view === 'orders' || view === 'audit') && !this.isSignedIn()) { void this.openLogin(); return; }
     this.activeView.set(view);
     if (view === 'orders') void this.loadOrders();
+    if (view === 'audit') void this.loadAuditLog();
   }
   openEvidenceReview(entry: EvidenceEntry) {
     if (!this.isSignedIn()) { void this.openLogin(); return; }
@@ -350,7 +356,7 @@ export class App {
     } catch { this.orders.set([]); }
   }
 
-  roleName(role = this.account()?.role || '') {
+  async loadAuditLog() {\n    if (!this.isSignedIn()) { this.auditEntries.set([]); return; }\n    this.auditLoading.set(true);\n    try { const result = await firstValueFrom(this.http.get<{ entries: AuditEntry[] }>(this.apiUrl('/api/audit-log'), this.authOptions())); this.auditEntries.set(result.entries || []); }\n    catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); } else this.showToast(error?.error?.error || 'Could not load the activity log.'); }\n    finally { this.auditLoading.set(false); }\n  }\n\n  roleName(role = this.account()?.role || '') {
     return ({ brand_owner: 'Brand / product owner', manufacturer: 'Manufacturer', supplier: 'Supplier', logistics_partner: 'Logistics partner', retailer: 'Retailer / customer', other: 'Other' } as Record<string, string>)[role] || role;
   }
 
@@ -399,7 +405,7 @@ export class App {
   }
 
   signOut() {
-    localStorage.removeItem('tracelens-owner-token'); this.isSignedIn.set(false); this.account.set(null); this.orders.set([]); this.showToast('Signed out. Workspace stays in read-only mode.');
+    localStorage.removeItem('tracelens-owner-token'); this.isSignedIn.set(false); this.account.set(null); this.orders.set([]); this.auditEntries.set([]); this.showToast('Signed out. Workspace stays in read-only mode.');
   }
 
   openCreateProduct() {
