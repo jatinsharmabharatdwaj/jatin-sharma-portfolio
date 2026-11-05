@@ -30,6 +30,10 @@ const EvidenceSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true, maxlength: 120 },
   reference: { type: String, trim: true, maxlength: 500 },
   notes: { type: String, trim: true, maxlength: 500 },
+  reviewStatus: { type: String, enum: ['Needs review', 'Reviewed', 'Needs follow-up'], default: 'Needs review' },
+  reviewNotes: { type: String, trim: true, maxlength: 500, default: '' },
+  reviewedBy: { type: String, trim: true, maxlength: 254, default: '' },
+  reviewedAt: { type: Date, default: null },
   addedAt: { type: Date, default: Date.now },
 }, { _id: true });
 const ProductSchema = new mongoose.Schema({
@@ -325,7 +329,7 @@ app.post('/api/suppliers/:id/evidence', requireOwner, async (req, res, next) => 
     const evidence = {
       kind: ['supplier', 'certificate', 'audit', 'other'].includes(req.body?.kind) ? req.body.kind : 'other',
       title, reference: cleanText(req.body?.reference, 500),
-      notes: cleanText(req.body?.notes, 500), addedAt: new Date(),
+      notes: cleanText(req.body?.notes, 500), reviewStatus: 'Needs review', reviewNotes: '', reviewedBy: '', reviewedAt: null, addedAt: new Date(),
     };
     let supplier;
     if (databaseReady) {
@@ -421,7 +425,7 @@ app.post('/api/products/:id/evidence', requireOwner, async (req, res, next) => {
   try {
     const title = cleanText(req.body?.title);
     if (!title) return res.status(400).json({ error: 'Evidence title is required.' });
-    const evidence = { kind: ['material', 'supplier', 'transport', 'certificate', 'other'].includes(req.body.kind) ? req.body.kind : 'other', title, reference: cleanText(req.body.reference, 500), notes: cleanText(req.body.notes, 500), addedAt: new Date() };
+    const evidence = { kind: ['material', 'supplier', 'transport', 'certificate', 'other'].includes(req.body.kind) ? req.body.kind : 'other', title, reference: cleanText(req.body.reference, 500), notes: cleanText(req.body.notes, 500), reviewStatus: 'Needs review', reviewNotes: '', reviewedBy: '', reviewedAt: null, addedAt: new Date() };
     let product;
     if (databaseReady) {
       product = await Product.findOne({ id: req.params.id });
@@ -515,6 +519,39 @@ app.post('/api/impact/estimate', requireOwner, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+app.patch('/api/evidence/:sourceType/:sourceId/:evidenceId', requireOwner, async (req, res, next) => {
+  try {
+    const sourceType = req.params.sourceType;
+    if (!['product', 'supplier'].includes(sourceType)) return res.status(400).json({ error: 'Choose a product or supplier evidence record.' });
+    const reviewStatus = cleanText(req.body?.reviewStatus, 40);
+    if (!['Needs review', 'Reviewed', 'Needs follow-up'].includes(reviewStatus)) return res.status(400).json({ error: 'Choose a valid review status.' });
+    const fields = {
+      reviewStatus, reviewNotes: cleanText(req.body?.reviewNotes, 500),
+      reviewedBy: reviewStatus === 'Reviewed' ? req.account.email : '',
+      reviewedAt: reviewStatus === 'Reviewed' ? new Date() : null,
+    };
+    let evidence;
+    if (databaseReady) {
+      const Model = sourceType === 'product' ? Product : SupplierRecord;
+      const record = await Model.findOne({ id: req.params.sourceId });
+      if (!record) return res.status(404).json({ error: 'Linked record not found.' });
+      evidence = record.evidence.id(req.params.evidenceId);
+      if (!evidence) return res.status(404).json({ error: 'Evidence record not found.' });
+      Object.assign(evidence, fields);
+      record.updatedAt = new Date();
+      await record.save();
+      evidence = evidence.toObject();
+    } else {
+      const records = sourceType === 'product' ? demoProducts : demoSuppliers;
+      const record = records.find((item) => item.id === req.params.sourceId);
+      if (!record) return res.status(404).json({ error: 'Linked record not found.' });
+      evidence = (record.evidence || []).find((item) => String(item._id) === req.params.evidenceId);
+      if (!evidence) return res.status(404).json({ error: 'Evidence record not found.' });
+      Object.assign(evidence, fields);
+    }
+    res.json({ evidence });
+  } catch (error) { next(error); }
+});
 app.use('/api', (_req, res) => res.status(404).json({ error: 'API route not found.' }));
 app.use(express.static(webRoot, { index: false, maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0 }));
 app.get(/.*/, (req, res, next) => req.method === 'GET' ? res.sendFile(path.join(webRoot, 'index.html'), (error) => error && next(error)) : next());
