@@ -10,7 +10,7 @@ type Product = {
   status: 'Verified' | 'In review' | 'Needs evidence'; emissions: number; emissionsSource?: string;
   progress: number; color: string; batch: string; material: string; evidence?: Evidence[];
 };
-type Supplier = { name: string; region: string; products: number; averageCoverage: number; evidenceItems: number; footprintKg: number };
+type Supplier = { id?: string; name: string; contactName?: string; email?: string; region: string; notes?: string; status?: string; products: number; averageCoverage: number; evidenceItems: number; footprintKg: number };
 type Analytics = { productCount: number; footprintKg: number; coverage: number; supplierCount: number; openGaps: number; verified: number; mode: string };
 type ChatMessage = { role: 'assistant' | 'user'; text: string; sources?: string[]; mode?: string };
 type Factor = { id: string; name: string; category?: string; source?: string; year?: number; unit_type?: string };
@@ -57,6 +57,15 @@ export class App {
   readonly factorParameters = signal('{\n  \n}');
   readonly products = signal<Product[]>([]);
   readonly suppliers = signal<Supplier[]>([]);
+  readonly showSupplierForm = signal(false);
+  readonly supplierBusy = signal(false);
+  readonly supplierId = signal('');
+  readonly supplierName = signal('');
+  readonly supplierContactName = signal('');
+  readonly supplierEmail = signal('');
+  readonly supplierRegion = signal('');
+  readonly supplierStatus = signal('Active');
+  readonly supplierNotes = signal('');
   readonly analytics = signal<Analytics>(EMPTY_ANALYTICS);
   readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact' | 'orders'>('overview');
   readonly query = signal('');
@@ -306,6 +315,39 @@ export class App {
     if (this.canWrite() && !this.isSignedIn()) { void this.openLogin(); return; }
     if (!this.canWrite()) { this.showToast('Workspace editing is not configured on this API.'); return; }
     this.showNewProduct.set(true);
+  }
+
+  openSupplierForm(supplier?: Supplier) {
+    if (!this.isSignedIn()) { void this.openLogin(); return; }
+    this.supplierId.set(supplier?.id || '');
+    this.supplierName.set(supplier?.name || '');
+    this.supplierContactName.set(supplier?.contactName || '');
+    this.supplierEmail.set(supplier?.email || '');
+    this.supplierRegion.set(supplier?.region === '—' ? '' : (supplier?.region || ''));
+    this.supplierStatus.set(supplier?.status === 'Pending' ? 'Pending' : 'Active');
+    this.supplierNotes.set(supplier?.notes || '');
+    this.showSupplierForm.set(true);
+  }
+
+  async saveSupplier() {
+    const name = this.supplierName().trim();
+    const email = this.supplierEmail().trim();
+    if (!name || (email && !this.isEmailValid(email)) || this.supplierBusy()) return;
+    this.supplierBusy.set(true);
+    const payload = { name, contactName: this.supplierContactName().trim(), email, region: this.supplierRegion().trim(), status: this.supplierStatus(), notes: this.supplierNotes().trim() };
+    try {
+      if (this.supplierId()) {
+        await firstValueFrom(this.http.patch(this.apiUrl(`/api/suppliers/${encodeURIComponent(this.supplierId())}`), payload, this.authOptions()));
+      } else {
+        await firstValueFrom(this.http.post(this.apiUrl('/api/suppliers'), payload, this.authOptions()));
+      }
+      this.showSupplierForm.set(false);
+      await this.refreshWorkspace();
+      this.showToast(this.supplierId() ? 'Supplier profile updated.' : 'Supplier profile saved.');
+    } catch (error: any) {
+      if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); }
+      else this.showToast(error?.error?.error || 'Could not save the supplier profile.');
+    } finally { this.supplierBusy.set(false); }
   }
 
   async addProduct() {
