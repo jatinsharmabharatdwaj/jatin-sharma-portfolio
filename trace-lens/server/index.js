@@ -364,7 +364,7 @@ app.get('/api/products/:id', async (req, res, next) => {
         : demoSuppliers.find((item) => item.normalizedName === product.supplier.trim().toLowerCase());
       supplierId = supplier?.id || '';
     }
-    res.json({ product: { ...product.toObject?.() || product, supplierId } });
+    res.json({ product: { ...(product.toObject?.() || product), supplierId } });
   } catch (error) { next(error); }
 });
 app.post('/api/products', requireOwner, async (req, res, next) => {
