@@ -96,7 +96,7 @@ export class App {
   readonly supplierEvidenceReference = signal('');
   readonly supplierEvidenceBusy = signal(false);
   readonly analytics = signal<Analytics>(EMPTY_ANALYTICS);
-  readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact' | 'orders' | 'evidence'>('overview');
+  readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact' | 'orders' | 'evidence' | 'traceability'>('overview');
   readonly query = signal('');
   readonly evidenceQuery = signal('');
   readonly evidenceReviewFilter = signal<'All' | EvidenceReviewStatus>('All');
@@ -135,6 +135,12 @@ export class App {
     if (!q) return this.products();
     return this.products().filter((p) => `${p.name} ${p.id} ${p.supplier} ${p.receiver} ${p.status} ${p.material} ${p.batch}`.toLowerCase().includes(q));
   });
+  readonly traceabilityRows = computed(() => this.filteredProducts().map((product) => ({
+    product, id: product.id, name: product.name, supplier: product.supplier?.trim() || 'Not recorded',
+    material: product.material?.trim() || 'Not recorded', receiver: product.receiver?.trim() || '',
+    region: product.region?.trim() || 'Not recorded', batch: product.batch?.trim() || 'Not recorded',
+    evidenceCount: product.evidence?.length || 0, status: product.status,
+  })));
   readonly chartBars = computed(() => {
     const groups = new Map<string, number>();
     for (const product of this.products()) {
@@ -182,7 +188,7 @@ export class App {
     }
   }
 
-  navTo(view: 'overview' | 'products' | 'suppliers' | 'impact' | 'orders' | 'evidence') {
+  navTo(view: 'overview' | 'products' | 'suppliers' | 'impact' | 'orders' | 'evidence' | 'traceability') {
     if (view === 'orders' && !this.isSignedIn()) { void this.openLogin(); return; }
     this.activeView.set(view);
     if (view === 'orders') void this.loadOrders();
