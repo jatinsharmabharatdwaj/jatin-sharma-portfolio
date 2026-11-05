@@ -18,6 +18,8 @@ app.use(helmet({
 }));
 const allowedOrigins = process.env.CLIENT_ORIGIN?.split(',').map((origin) => origin.trim()).filter(Boolean);
 app.use(cors({ origin: allowedOrigins?.length ? allowedOrigins : true }));
+app.use('/api/evidence/upload', rateLimit({ windowMs: 60_000, limit: 8, standardHeaders: 'draft-7', legacyHeaders: false }));
+app.use('/api/evidence/upload', express.json({ limit: '7mb' }));
 app.use(express.json({ limit: '32kb' }));
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 90, standardHeaders: 'draft-7', legacyHeaders: false }));
 app.use('/api/ai', rateLimit({ windowMs: 60_000, limit: 6, standardHeaders: 'draft-7', legacyHeaders: false }));
@@ -30,6 +32,10 @@ const EvidenceSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true, maxlength: 120 },
   reference: { type: String, trim: true, maxlength: 500 },
   notes: { type: String, trim: true, maxlength: 500 },
+  fileId: { type: String, trim: true, maxlength: 40, default: '' },
+  fileName: { type: String, trim: true, maxlength: 180, default: '' },
+  fileMimeType: { type: String, trim: true, maxlength: 80, default: '' },
+  fileSize: { type: Number, min: 0, default: 0 },
   reviewStatus: { type: String, enum: ['Needs review', 'Reviewed', 'Needs follow-up'], default: 'Needs review' },
   reviewNotes: { type: String, trim: true, maxlength: 500, default: '' },
   reviewedBy: { type: String, trim: true, maxlength: 254, default: '' },
@@ -431,6 +437,75 @@ app.delete('/api/products/:id', requireOwner, async (req, res, next) => {
     res.json({ deleted: req.params.id });
   } catch (error) { next(error); }
 });
+const MAX_EVIDENCE_FILE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_EVIDENCE_TYPES = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp']);
+function evidenceFileMatchesType(buffer, mimeType) {
+  if (mimeType === 'application/pdf') return buffer.subarray(0, 5).toString() === '%PDF-';
+  if (mimeType === 'image/png') return buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (mimeType === 'image/jpeg') return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  if (mimeType === 'image/webp') return buffer.subarray(0, 4).toString() === 'RIFF' && buffer.subarray(8, 12).toString() === 'WEBP';
+  return false;
+}
+async function saveEvidenceFile(buffer, fileName, mimeType, metadata) {
+  const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'evidenceFiles' });
+  return new Promise((resolve, reject) => {
+    const stream = bucket.openUploadStream(fileName, { contentType: mimeType, metadata });
+    stream.once('error', reject); stream.once('finish', () => resolve(String(stream.id))); stream.end(buffer);
+  });
+}
+app.post('/api/evidence/upload', requireOwner, async (req, res, next) => {
+  let fileId = '';
+  let record;
+  let evidence;
+  try {
+    if (!databaseReady) return res.status(503).json({ error: 'Private file uploads need the connected database.' });
+    const body = req.body || {};
+    const sourceType = ['product', 'supplier'].includes(body.sourceType) ? body.sourceType : '';
+    const sourceId = cleanText(body.sourceId, 100), title = cleanText(body.title, 120), kind = cleanText(body.kind, 30);
+    const reference = cleanText(body.reference, 500), rawName = typeof body.fileName === 'string' ? body.fileName : '';
+    const fileName = path.basename(rawName).replace(/[\r\n"]/g, '_').slice(0, 180);
+    const mimeType = typeof body.fileMimeType === 'string' ? body.fileMimeType.toLowerCase() : '';
+    const encoded = typeof body.fileBase64 === 'string' ? body.fileBase64 : '';
+    if (!sourceType || !sourceId || !title || !fileName) return res.status(400).json({ error: 'Choose a record, evidence title, and file.' });
+    if (rawName.length > 180 || !ALLOWED_EVIDENCE_TYPES.has(mimeType)) return res.status(400).json({ error: 'Upload a PDF, PNG, JPG, or WEBP file up to 5 MB.' });
+    if (!encoded || encoded.length > Math.ceil(MAX_EVIDENCE_FILE_BYTES / 3) * 4 + 8 || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) return res.status(400).json({ error: 'The uploaded file data is invalid or larger than 5 MB.' });
+    const buffer = Buffer.from(encoded, 'base64');
+    if (!buffer.length || buffer.length > MAX_EVIDENCE_FILE_BYTES || !evidenceFileMatchesType(buffer, mimeType)) return res.status(400).json({ error: 'The file content does not match its supported type or exceeds 5 MB.' });
+    record = sourceType === 'product' ? await Product.findOne({ id: sourceId }) : await SupplierRecord.findOne({ id: sourceId });
+    if (!record) return res.status(404).json({ error: 'The linked workspace record was not found.' });
+    const kinds = sourceType === 'product' ? ['material', 'supplier', 'transport', 'certificate', 'audit', 'other'] : ['supplier', 'certificate', 'audit', 'other'];
+    record.evidence.push({ kind: kinds.includes(kind) ? kind : 'other', title, reference, notes: '', reviewStatus: 'Needs review', reviewNotes: '', reviewedBy: '', reviewedAt: null, addedAt: new Date() });
+    evidence = record.evidence.at(-1);
+    fileId = await saveEvidenceFile(buffer, fileName, mimeType, { sourceType, sourceId, evidenceId: String(evidence._id), uploadedBy: req.account.email });
+    evidence.fileId = fileId; evidence.fileName = fileName; evidence.fileMimeType = mimeType; evidence.fileSize = buffer.length;
+    if (sourceType === 'product') { record.progress = Math.min(100, (Number(record.progress) || 0) + 12); record.status = record.progress >= 85 ? 'Verified' : 'In review'; }
+    record.updatedAt = new Date();
+    await record.save();
+    res.status(201).json(sourceType === 'product' ? { product: record, evidence } : { supplier: record, evidence });
+  } catch (error) {
+    if (fileId) { try { await new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'evidenceFiles' }).delete(new mongoose.Types.ObjectId(fileId)); } catch {} }
+    if (record && evidence?._id) record.evidence.pull(evidence._id);
+    next(error);
+  }
+});
+app.get('/api/evidence/files/:fileId', requireOwner, async (req, res, next) => {
+  try {
+    if (!databaseReady || !mongoose.Types.ObjectId.isValid(req.params.fileId)) return res.status(404).json({ error: 'Evidence file not found.' });
+    const id = req.params.fileId;
+    const [productEvidence, supplierEvidence] = await Promise.all([Product.exists({ 'evidence.fileId': id }), SupplierRecord.exists({ 'evidence.fileId': id })]);
+    if (!productEvidence && !supplierEvidence) return res.status(404).json({ error: 'Evidence file not found.' });
+    const bucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, { bucketName: 'evidenceFiles' }), objectId = new mongoose.Types.ObjectId(id);
+    const [file] = await bucket.find({ _id: objectId }).limit(1).toArray();
+    if (!file) return res.status(404).json({ error: 'Evidence file not found.' });
+    const mimeType = ALLOWED_EVIDENCE_TYPES.has(file.contentType) ? file.contentType : 'application/octet-stream';
+    const safeName = String(file.filename || 'evidence-file').replace(/[\r\n"]/g, '_');
+    res.set({ 'Content-Type': mimeType, 'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(safeName)}`, 'Content-Length': String(file.length), 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'" });
+    const stream = bucket.openDownloadStream(objectId);
+    stream.once('error', (error) => { if (!res.headersSent) next(error); else res.destroy(error); });
+    stream.pipe(res);
+  } catch (error) { next(error); }
+});
+
 app.post('/api/products/:id/evidence', requireOwner, async (req, res, next) => {
   try {
     const title = cleanText(req.body?.title);
