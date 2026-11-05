@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 
 type EvidenceReviewStatus = 'Needs review' | 'Reviewed' | 'Needs follow-up';
-type Evidence = { _id?: string; kind: string; title: string; reference?: string; notes?: string; addedAt?: string; reviewStatus?: EvidenceReviewStatus; reviewNotes?: string; reviewedBy?: string; reviewedAt?: string };
+type Evidence = { _id?: string; kind: string; title: string; reference?: string; notes?: string; addedAt?: string; fileId?: string; fileName?: string; fileMimeType?: string; fileSize?: number; reviewStatus?: EvidenceReviewStatus; reviewNotes?: string; reviewedBy?: string; reviewedAt?: string };
 type Product = {
   id: string; name: string; category: string; supplier: string; supplierId?: string; region: string; receiver: string;
   status: 'Verified' | 'In review' | 'Needs evidence'; emissions: number; emissionsSource?: string;
@@ -64,6 +64,8 @@ export class App {
   readonly evidenceEntries = computed<EvidenceEntry[]>(() => {
     const productEntries = this.products().flatMap((product) => (product.evidence || []).map((item) => ({
       _id: item._id, kind: item.kind, title: item.title, reference: item.reference, notes: item.notes, addedAt: item.addedAt,
+      fileId: item.fileId, fileName: item.fileName, fileMimeType: item.fileMimeType, fileSize: item.fileSize,
+      fileId: item.fileId, fileName: item.fileName, fileMimeType: item.fileMimeType, fileSize: item.fileSize,
       reviewStatus: item.reviewStatus || 'Needs review', reviewNotes: item.reviewNotes || '', reviewedBy: item.reviewedBy || '', reviewedAt: item.reviewedAt,
       sourceType: 'Product' as const, sourceId: product.id, sourceName: product.name, sourceDetail: product.id,
     })));
@@ -119,6 +121,10 @@ export class App {
   readonly evidenceTitle = signal('');
   readonly evidenceKind = signal('material');
   readonly evidenceReference = signal('');
+  readonly evidenceFile = signal<File | null>(null);
+  readonly evidenceFileError = signal('');
+  readonly supplierEvidenceFile = signal<File | null>(null);
+  readonly supplierEvidenceFileError = signal('');
   readonly editName = signal('');
   readonly editMaterial = signal('');
   readonly editSupplier = signal('');
@@ -420,19 +426,60 @@ export class App {
     return this.suppliers().find((supplier) => supplier.id === id);
   }
 
+  selectEvidenceFile(event: Event) {
+    const input = event.target as HTMLInputElement, file = input.files?.[0] || null;
+    this.evidenceFileError.set(''); this.evidenceFile.set(null);
+    if (!file) return;
+    if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) { this.evidenceFileError.set('Choose a PDF, PNG, JPG, or WEBP file up to 5 MB.'); input.value = ''; return; }
+    this.evidenceFile.set(file);
+  }
+  selectSupplierEvidenceFile(event: Event) {
+    const input = event.target as HTMLInputElement, file = input.files?.[0] || null;
+    this.supplierEvidenceFileError.set(''); this.supplierEvidenceFile.set(null);
+    if (!file) return;
+    if (!['application/pdf', 'image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) { this.supplierEvidenceFileError.set('Choose a PDF, PNG, JPG, or WEBP file up to 5 MB.'); input.value = ''; return; }
+    this.supplierEvidenceFile.set(file);
+  }
+  private fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('Could not read this file.'));
+      reader.onload = () => { const value = String(reader.result || ''), comma = value.indexOf(','); comma < 0 ? reject(new Error('Could not read this file.')) : resolve(value.slice(comma + 1)); };
+      reader.readAsDataURL(file);
+    });
+  }
+  async downloadEvidence(item: Evidence) {
+    if (!item.fileId) return;
+    try {
+      const blob = await firstValueFrom(this.http.get(this.apiUrl(`/api/evidence/files/${encodeURIComponent(item.fileId)}`), { ...this.authOptions(), responseType: 'blob' }));
+      const url = URL.createObjectURL(blob), anchor = document.createElement('a');
+      anchor.href = url; anchor.download = item.fileName || 'evidence-file';
+      document.body.appendChild(anchor); anchor.click(); anchor.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error: any) {
+      if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); }
+      else this.showToast(error?.error?.error || 'Could not download this evidence file.');
+    }
+  }
+
   async addSupplierEvidence() {
     const id = this.supplierId();
     const title = this.supplierEvidenceTitle().trim();
     if (!id || !title || this.supplierEvidenceBusy()) return;
     this.supplierEvidenceBusy.set(true);
     try {
-      await firstValueFrom(this.http.post(this.apiUrl(`/api/suppliers/${encodeURIComponent(id)}/evidence`), {
+      const file = this.supplierEvidenceFile();
+      if (file) await firstValueFrom(this.http.post(this.apiUrl('/api/evidence/upload'), {
+        sourceType: 'supplier', sourceId: id, kind: this.supplierEvidenceKind(), title,
+        reference: this.supplierEvidenceReference().trim(), fileName: file.name, fileMimeType: file.type,
+        fileBase64: await this.fileToBase64(file),
+      }, this.authOptions()));
+      else await firstValueFrom(this.http.post(this.apiUrl(`/api/suppliers/${encodeURIComponent(id)}/evidence`), {
         kind: this.supplierEvidenceKind(), title, reference: this.supplierEvidenceReference().trim(),
       }, this.authOptions()));
-      this.supplierEvidenceTitle.set('');
-      this.supplierEvidenceReference.set('');
+      this.supplierEvidenceTitle.set(''); this.supplierEvidenceReference.set('');
+      this.supplierEvidenceFile.set(null); this.supplierEvidenceFileError.set('');
       await this.refreshWorkspace();
-      this.showToast('Supplier evidence record saved.');
+      this.showToast(file ? 'Evidence file uploaded to the private workspace.' : 'Supplier evidence record saved.');
     } catch (error: any) {
       if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); }
       else this.showToast(error?.error?.error || 'Could not save the supplier evidence record.');
@@ -503,14 +550,22 @@ export class App {
     if (!title || this.busy()) return;
     this.busy.set(true);
     try {
-      const result = await firstValueFrom(this.http.post<{ product: Product }>(this.apiUrl(`/api/products/${encodeURIComponent(product.id)}/evidence`), {
+      const file = this.evidenceFile();
+      let result: { product: Product };
+      if (file) result = await firstValueFrom(this.http.post<{ product: Product }>(this.apiUrl('/api/evidence/upload'), {
+        sourceType: 'product', sourceId: product.id, title, kind: this.evidenceKind(),
+        reference: this.evidenceReference().trim(), fileName: file.name, fileMimeType: file.type,
+        fileBase64: await this.fileToBase64(file),
+      }, this.authOptions()));
+      else result = await firstValueFrom(this.http.post<{ product: Product }>(this.apiUrl(`/api/products/${encodeURIComponent(product.id)}/evidence`), {
         title, kind: this.evidenceKind(), reference: this.evidenceReference().trim(),
       }, this.authOptions()));
-      this.evidenceTitle.set(''); this.evidenceReference.set(''); this.selectedProduct.set(result.product);
+      this.evidenceTitle.set(''); this.evidenceReference.set('');
+      this.evidenceFile.set(null); this.evidenceFileError.set(''); this.selectedProduct.set(result.product);
       await this.refreshWorkspace();
       const updated = this.products().find((entry) => entry.id === product.id);
       if (updated) this.selectedProduct.set(updated);
-      this.showToast('Evidence record added.');
+      this.showToast(file ? 'Evidence file uploaded to the private workspace.' : 'Evidence record added.');
     } catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); } else this.showToast(error?.error?.error || 'Could not add evidence. Check the API connection.'); }
     finally { this.busy.set(false); }
   }
