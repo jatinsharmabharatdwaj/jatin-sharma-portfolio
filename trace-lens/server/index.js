@@ -26,7 +26,7 @@ app.use('/api/auth', rateLimit({ windowMs: 60_000, limit: 5, standardHeaders: 'd
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist/trace-lens/browser');
 
 const EvidenceSchema = new mongoose.Schema({
-  kind: { type: String, enum: ['material', 'supplier', 'transport', 'certificate', 'other'], default: 'other' },
+  kind: { type: String, enum: ['material', 'supplier', 'transport', 'certificate', 'audit', 'other'], default: 'other' },
   title: { type: String, required: true, trim: true, maxlength: 120 },
   reference: { type: String, trim: true, maxlength: 500 },
   notes: { type: String, trim: true, maxlength: 500 },
