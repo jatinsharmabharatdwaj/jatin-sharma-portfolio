@@ -50,6 +50,18 @@ const ProductSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 }, { versionKey: false });
 const Product = mongoose.model('Product', ProductSchema);
+const SupplierSchema = new mongoose.Schema({
+  id: { type: String, required: true, unique: true, index: true },
+  name: { type: String, required: true, trim: true, maxlength: 120 },
+  normalizedName: { type: String, required: true, unique: true, index: true },
+  contactName: { type: String, trim: true, maxlength: 120, default: '' },
+  email: { type: String, lowercase: true, trim: true, maxlength: 254, default: '' },
+  region: { type: String, trim: true, maxlength: 80, default: '—' },
+  notes: { type: String, trim: true, maxlength: 500, default: '' },
+  status: { type: String, enum: ['Active', 'Pending'], default: 'Active' },
+  updatedAt: { type: Date, default: Date.now },
+}, { versionKey: false });
+const SupplierRecord = mongoose.model('SupplierRecord', SupplierSchema);
 const OwnerSchema = new mongoose.Schema({
   _id: { type: String, default: () => crypto.randomUUID() },
   email: { type: String, required: true, lowercase: true, trim: true, maxlength: 254, unique: true },
@@ -72,6 +84,7 @@ const OrderSchema = new mongoose.Schema({
 const Order = mongoose.model('Order', OrderSchema);
 
 const demoProducts = []; // Empty until the workspace owner adds records.
+const demoSuppliers = [];
 let databaseReady = false;
 const listProducts = async () => databaseReady ? Product.find({ emissionsSource: { $ne: 'Illustrative demo value' } }).sort({ updatedAt: -1 }).lean() : demoProducts;
 const findProduct = async (id) => databaseReady ? Product.findOne({ id, emissionsSource: { $ne: 'Illustrative demo value' } }) : demoProducts.find((product) => product.id === id);
@@ -240,17 +253,64 @@ app.get('/api/analytics', async (_req, res, next) => {
 app.get('/api/suppliers', async (_req, res, next) => {
   try {
     const products = await listProducts();
+    const records = databaseReady ? await SupplierRecord.find({}).sort({ name: 1 }).lean() : demoSuppliers;
     const map = new Map();
     for (const product of products) {
       const key = product.supplier;
       if (!key || key === '—' || key === 'Supplier to be assigned') continue;
-      const entry = map.get(key) || { name: key, region: product.region, products: 0, averageCoverage: 0, evidenceItems: 0, footprintKg: 0 };
+      const normalizedName = key.trim().toLowerCase();
+      const entry = map.get(normalizedName) || { name: key, region: product.region, products: 0, averageCoverage: 0, evidenceItems: 0, footprintKg: 0 };
       entry.products += 1; entry.averageCoverage += Number(product.progress) || 0;
       entry.evidenceItems += product.evidence?.length || 0; entry.footprintKg += Number(product.emissions) || 0;
-      map.set(key, entry);
+      map.set(normalizedName, entry);
     }
-    const suppliers = [...map.values()].map((entry) => ({ ...entry, averageCoverage: Math.round(entry.averageCoverage / entry.products), footprintKg: Number(entry.footprintKg.toFixed(2)) }));
+    const managed = new Map(records.map((record) => [record.normalizedName || record.name.trim().toLowerCase(), record]));
+    const suppliers = [...new Set([...map.keys(), ...managed.keys()])].map((key) => {
+      const base = map.get(key) || { name: managed.get(key)?.name || key, region: '—', products: 0, averageCoverage: 0, evidenceItems: 0, footprintKg: 0 };
+      const record = managed.get(key);
+      return { ...base, ...(record ? { id: record.id, contactName: record.contactName || '', email: record.email || '', region: record.region || base.region, notes: record.notes || '', status: record.status || 'Active' } : { contactName: '', email: '', notes: '', status: 'Needs profile' }) };
+    }).map((entry) => ({ ...entry, averageCoverage: entry.products ? Math.round(entry.averageCoverage / entry.products) : 0, footprintKg: Number(entry.footprintKg.toFixed(2)) }));
     res.json({ suppliers, mode: databaseReady ? 'mongodb' : 'session-demo' });
+  } catch (error) { next(error); }
+});
+app.post('/api/suppliers', requireOwner, async (req, res, next) => {
+  try {
+    const name = cleanText(req.body?.name);
+    if (!name) return res.status(400).json({ error: 'Supplier name is required.' });
+    const normalizedName = name.toLowerCase();
+    const fields = {
+      name, normalizedName, contactName: cleanText(req.body?.contactName),
+      email: cleanText(req.body?.email, 254).toLowerCase(),
+      region: cleanText(req.body?.region, 80) || '—', notes: cleanText(req.body?.notes, 500),
+      status: req.body?.status === 'Pending' ? 'Pending' : 'Active', updatedAt: new Date(),
+    };
+    let supplier;
+    if (databaseReady) {
+      supplier = await SupplierRecord.findOneAndUpdate({ normalizedName }, { $set: fields, $setOnInsert: { id: `SUP-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}` } }, { upsert: true, new: true, runValidators: true });
+    } else {
+      supplier = demoSuppliers.find((item) => item.normalizedName === normalizedName);
+      if (supplier) Object.assign(supplier, fields);
+      else { supplier = { id: `SUP-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`, ...fields }; demoSuppliers.push(supplier); }
+    }
+    res.status(201).json({ supplier });
+  } catch (error) { next(error); }
+});
+app.patch('/api/suppliers/:id', requireOwner, async (req, res, next) => {
+  try {
+    const name = cleanText(req.body?.name);
+    if (!name) return res.status(400).json({ error: 'Supplier name is required.' });
+    const normalizedName = name.toLowerCase();
+    const fields = {
+      name, normalizedName, contactName: cleanText(req.body?.contactName),
+      email: cleanText(req.body?.email, 254).toLowerCase(),
+      region: cleanText(req.body?.region, 80) || '—', notes: cleanText(req.body?.notes, 500),
+      status: req.body?.status === 'Pending' ? 'Pending' : 'Active', updatedAt: new Date(),
+    };
+    let supplier;
+    if (databaseReady) supplier = await SupplierRecord.findOneAndUpdate({ id: req.params.id }, { $set: fields }, { new: true, runValidators: true });
+    else { supplier = demoSuppliers.find((item) => item.id === req.params.id); if (supplier) Object.assign(supplier, fields); }
+    if (!supplier) return res.status(404).json({ error: 'Supplier not found.' });
+    res.json({ supplier });
   } catch (error) { next(error); }
 });
 app.get('/api/products', async (_req, res, next) => {
