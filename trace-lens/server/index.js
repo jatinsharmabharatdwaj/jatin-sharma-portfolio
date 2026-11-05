@@ -86,6 +86,12 @@ const OrderSchema = new mongoose.Schema({
   unit: { type: String, required: true, trim: true, maxlength: 30 },
   notes: { type: String, trim: true, maxlength: 500, default: '' },
   status: { type: String, enum: ['Pending', 'Accepted', 'In production', 'Ready to ship', 'In transit', 'Delivered', 'Rejected'], default: 'Pending' },
+  events: [{
+    status: { type: String, required: true },
+    actorEmail: { type: String, trim: true, lowercase: true, default: '' },
+    actorRole: { type: String, trim: true, default: '' },
+    occurredAt: { type: Date, default: Date.now },
+  }],
 }, { versionKey: false, timestamps: true });
 const Order = mongoose.model('Order', OrderSchema);
 
@@ -223,6 +229,7 @@ app.post('/api/orders', requireOwner, async (req, res, next) => {
       id: 'ORD-' + Date.now().toString(36).toUpperCase() + '-' + crypto.randomBytes(2).toString('hex').toUpperCase(),
       senderEmail: req.account.email, senderRole, recipientEmail, recipientRole: recipient.role,
       productName, quantity, unit, notes, status: 'Pending',
+      events: [{ status: 'Pending', actorEmail: req.account.email, actorRole: senderRole, occurredAt: new Date() }],
     });
     res.status(201).json({ order });
   } catch (error) { next(error); }
@@ -239,7 +246,10 @@ app.patch('/api/orders/:id/status', requireOwner, async (req, res, next) => {
       logistics_partner: ['In transit', 'Delivered'],
     };
     if (!allowed[role]?.includes(status)) return res.status(403).json({ error: 'That action is not available for your role.' });
+    if (order.status === status) return res.status(400).json({ error: 'This order is already marked with that status.' });
     order.status = status;
+    order.events ||= [];
+    order.events.push({ status, actorEmail: req.account.email, actorRole: role, occurredAt: new Date() });
     await order.save();
     res.json({ order });
   } catch (error) { next(error); }
