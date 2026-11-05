@@ -56,6 +56,16 @@
             <h3>{{ order.productName }}</h3><b class="order-quantity">{{ order.quantity }} {{ order.unit }}</b>
             <div class="order-parties"><span><small>FROM</small><b>{{ order.senderEmail }}</b><small>{{ roleName(order.senderRole) }}</small></span><span><small>TO</small><b>{{ order.recipientEmail }}</b><small>{{ roleName(order.recipientRole) }}</small></span></div>
             <p *ngIf="order.notes">{{ order.notes }}</p>
+            <div class="order-history">
+              <span class="panel-kicker">STATUS HISTORY</span>
+              <div class="timeline order-timeline">
+                <div *ngFor="let event of orderEvents(order)">
+                  <i></i><b>{{ event.status }}</b>
+                  <small *ngIf="event.actorEmail">{{ roleName(event.actorRole) }} · {{ event.actorEmail }} · {{ event.occurredAt | date:'medium' }}</small>
+                  <small *ngIf="!event.actorEmail">{{ event.note }} · {{ event.occurredAt | date:'medium' }}</small>
+                </div>
+              </div>
+            </div>
             <div class="order-actions">
               <button class="cancel-button" *ngIf="canUpdateOrder(order, 'Accepted')" (click)="updateOrder(order, 'Accepted')">Accept</button>
               <button class="cancel-button" *ngIf="canUpdateOrder(order, 'In production')" (click)="updateOrder(order, 'In production')">Start production</button>
