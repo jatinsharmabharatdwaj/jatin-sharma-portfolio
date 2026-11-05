@@ -100,6 +100,17 @@ const OrderSchema = new mongoose.Schema({
   }],
 }, { versionKey: false, timestamps: true });
 const Order = mongoose.model('Order', OrderSchema);
+const AuditLogSchema = new mongoose.Schema({
+  actorEmail: { type: String, required: true, trim: true, lowercase: true, maxlength: 254 },
+  actorRole: { type: String, required: true, trim: true, maxlength: 40 },
+  action: { type: String, required: true, trim: true, maxlength: 60 },
+  entityType: { type: String, required: true, trim: true, maxlength: 40 },
+  entityId: { type: String, trim: true, maxlength: 120, default: '' },
+  entityName: { type: String, trim: true, maxlength: 160, default: '' },
+  summary: { type: String, trim: true, maxlength: 300, default: '' },
+  occurredAt: { type: Date, default: Date.now, index: true },
+}, { versionKey: false });
+const AuditLog = mongoose.model('AuditLog', AuditLogSchema);
 
 const demoProducts = []; // Empty until the workspace owner adds records.
 const demoSuppliers = [];
@@ -160,6 +171,52 @@ async function requireOwner(req, res, next) {
     next();
   } catch { res.status(401).json({ error: 'Your session expired. Sign in again.' }); }
 }
+app.get('/api/audit-log', requireOwner, async (_req, res, next) => {
+  try {
+    const entries = databaseReady ? await AuditLog.find({}).sort({ occurredAt: -1 }).limit(250).lean() : demoAuditLog.slice().sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt)).slice(0, 250);
+    res.json({ entries });
+  } catch (error) { next(error); }
+});
+const demoAuditLog = [];
+app.use((req, res, next) => {
+  if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method) || !req.path.startsWith('/api/')) return next();
+  const path = req.path;
+  let action = '', entityType = '';
+  if (/^\/api\/products\/?$/.test(path) && req.method === 'POST') { action = 'Product created'; entityType = 'Product'; }
+  else if (/^\/api\/products\/[^/]+$/.test(path) && req.method === 'PATCH') { action = 'Product updated'; entityType = 'Product'; }
+  else if (/^\/api\/products\/[^/]+$/.test(path) && req.method === 'DELETE') { action = 'Product deleted'; entityType = 'Product'; }
+  else if (/^\/api\/suppliers\/?$/.test(path) && req.method === 'POST') { action = 'Supplier saved'; entityType = 'Supplier'; }
+  else if (/^\/api\/suppliers\/[^/]+$/.test(path) && req.method === 'PATCH') { action = 'Supplier updated'; entityType = 'Supplier'; }
+  else if (/^\/api\/(products|suppliers)\/[^/]+\/evidence\/?$/.test(path) && req.method === 'POST') { action = 'Evidence added'; entityType = 'Evidence'; }
+  else if (path === '/api/evidence/upload' && req.method === 'POST') { action = 'Evidence file uploaded'; entityType = 'Evidence'; }
+  else if (/^\/api\/evidence\//.test(path) && req.method === 'PATCH') { action = 'Evidence review updated'; entityType = 'Evidence'; }
+  else if (path === '/api/impact/estimate' && req.method === 'POST') { action = 'Footprint calculated'; entityType = 'Product'; }
+  else if (path === '/api/orders' && req.method === 'POST') { action = 'Order created'; entityType = 'Order'; }
+  else if (/^\/api\/orders\/[^/]+\/status$/.test(path) && req.method === 'PATCH') { action = 'Order status updated'; entityType = 'Order'; }
+  if (!action) return next();
+
+  const sendJson = res.json.bind(res);
+  res.json = (payload) => {
+    if (res.statusCode < 200 || res.statusCode >= 300 || !req.account) return sendJson(payload);
+    const record = payload?.product || payload?.supplier || payload?.order || payload?.evidence || {};
+    const entityId = String(record.id || req.params?.id || req.params?.sourceId || req.body?.productId || '');
+    const entityName = String(record.name || record.productName || req.body?.name || req.body?.productName || req.body?.title || '');
+    const detail = action === 'Order status updated' ? `Status changed to ${req.body?.status || 'updated'}` :
+      action === 'Evidence review updated' ? `Review marked ${req.body?.reviewStatus || 'updated'}` :
+      action === 'Footprint calculated' ? `Footprint estimated for ${entityName || entityId}` :
+      entityName ? `${entityType}: ${entityName}` : `${entityType} record updated`;
+    const entry = { actorEmail: req.account.email, actorRole: req.account.role || 'other', action, entityType, entityId, entityName, summary: detail, occurredAt: new Date() };
+    const save = databaseReady ? AuditLog.create(entry) : (demoAuditLog.push({ ...entry, _id: crypto.randomUUID() }), Promise.resolve());
+    save.then(() => sendJson(payload)).catch((error) => {
+      console.error('Audit log write failed:', error.message);
+      res.status(503);
+      sendJson({ error: 'The change was saved, but its audit entry could not be recorded. Refresh the workspace and try again.' });
+    });
+    return res;
+  };
+  next();
+});
+
 app.get('/api/auth/setup-status', async (_req, res, next) => {
   try {
     const signupAvailable = Boolean(databaseReady && process.env.WORKSPACE_PASSWORD && process.env.JWT_SECRET);
@@ -208,6 +265,8 @@ app.post('/api/auth/login', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 app.get('/api/auth/me', requireOwner, (req, res) => res.json({ email: req.account.email, role: req.account.role }));
+
+
 
 app.get('/api/orders', requireOwner, async (req, res, next) => {
   try {
