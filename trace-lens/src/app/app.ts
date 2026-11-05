@@ -10,7 +10,7 @@ type Product = {
   status: 'Verified' | 'In review' | 'Needs evidence'; emissions: number; emissionsSource?: string;
   progress: number; color: string; batch: string; material: string; evidence?: Evidence[];
 };
-type Supplier = { id?: string; name: string; contactName?: string; email?: string; region: string; notes?: string; status?: string; products: number; averageCoverage: number; evidenceItems: number; footprintKg: number };
+type Supplier = { id?: string; name: string; contactName?: string; email?: string; region: string; notes?: string; status?: string; products: number; averageCoverage: number; evidenceItems: number; profileCompleteness: number; evidenceRecords?: Evidence[]; footprintKg: number };
 type Analytics = { productCount: number; footprintKg: number; coverage: number; supplierCount: number; openGaps: number; verified: number; mode: string };
 type ChatMessage = { role: 'assistant' | 'user'; text: string; sources?: string[]; mode?: string };
 type Factor = { id: string; name: string; category?: string; source?: string; year?: number; unit_type?: string };
@@ -66,6 +66,10 @@ export class App {
   readonly supplierRegion = signal('');
   readonly supplierStatus = signal('Active');
   readonly supplierNotes = signal('');
+  readonly supplierEvidenceKind = signal('supplier');
+  readonly supplierEvidenceTitle = signal('');
+  readonly supplierEvidenceReference = signal('');
+  readonly supplierEvidenceBusy = signal(false);
   readonly analytics = signal<Analytics>(EMPTY_ANALYTICS);
   readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact' | 'orders'>('overview');
   readonly query = signal('');
@@ -327,6 +331,25 @@ export class App {
     this.supplierStatus.set(supplier?.status === 'Pending' ? 'Pending' : 'Active');
     this.supplierNotes.set(supplier?.notes || '');
     this.showSupplierForm.set(true);
+  }
+
+  async addSupplierEvidence() {
+    const id = this.supplierId();
+    const title = this.supplierEvidenceTitle().trim();
+    if (!id || !title || this.supplierEvidenceBusy()) return;
+    this.supplierEvidenceBusy.set(true);
+    try {
+      await firstValueFrom(this.http.post(this.apiUrl(`/api/suppliers/${encodeURIComponent(id)}/evidence`), {
+        kind: this.supplierEvidenceKind(), title, reference: this.supplierEvidenceReference().trim(),
+      }, this.authOptions()));
+      this.supplierEvidenceTitle.set('');
+      this.supplierEvidenceReference.set('');
+      await this.refreshWorkspace();
+      this.showToast('Supplier evidence record saved.');
+    } catch (error: any) {
+      if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); }
+      else this.showToast(error?.error?.error || 'Could not save the supplier evidence record.');
+    } finally { this.supplierEvidenceBusy.set(false); }
   }
 
   async saveSupplier() {
