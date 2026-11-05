@@ -6,7 +6,7 @@ import { firstValueFrom } from 'rxjs';
 
 type Evidence = { _id?: string; kind: string; title: string; reference?: string; notes?: string; addedAt?: string };
 type Product = {
-  id: string; name: string; category: string; supplier: string; region: string; receiver: string;
+  id: string; name: string; category: string; supplier: string; supplierId?: string; region: string; receiver: string;
   status: 'Verified' | 'In review' | 'Needs evidence'; emissions: number; emissionsSource?: string;
   progress: number; color: string; batch: string; material: string; evidence?: Evidence[];
 };
@@ -57,6 +57,7 @@ export class App {
   readonly factorParameters = signal('{\n  \n}');
   readonly products = signal<Product[]>([]);
   readonly suppliers = signal<Supplier[]>([]);
+  readonly supplierProfiles = computed(() => this.suppliers().filter((supplier) => Boolean(supplier.id)));
   readonly showSupplierForm = signal(false);
   readonly supplierBusy = signal(false);
   readonly supplierId = signal('');
@@ -81,7 +82,7 @@ export class App {
   readonly showNewProduct = signal(false);
   readonly newProductName = signal('');
   readonly newProductMaterial = signal('');
-  readonly newProductSupplier = signal('');
+  readonly newProductSupplierId = signal('');
   readonly newProductRegion = signal('');
   readonly newProductReceiver = signal('');
   readonly evidenceTitle = signal('');
@@ -90,6 +91,7 @@ export class App {
   readonly editName = signal('');
   readonly editMaterial = signal('');
   readonly editSupplier = signal('');
+  readonly editSupplierId = signal('');
   readonly editRegion = signal('');
   readonly editReceiver = signal('');
   readonly editCategory = signal('');
@@ -158,7 +160,11 @@ export class App {
   toggleTheme() { this.isLight.update((value) => !value); }
   openProduct(product: Product) {
     this.selectedProduct.set(product); this.editName.set(product.name); this.editMaterial.set(product.material);
-    this.editSupplier.set(product.supplier); this.editRegion.set(product.region); this.editReceiver.set(product.receiver || '—');
+    this.editSupplier.set(product.supplier);
+    const existingSupplier = this.suppliers().find((supplier) => supplier.id === product.supplierId)
+      || this.suppliers().find((supplier) => supplier.name.trim().toLowerCase() === (product.supplier || '').trim().toLowerCase());
+    this.editSupplierId.set(existingSupplier?.id || (product.supplier && product.supplier !== '—' ? '__legacy__' : ''));
+    this.editRegion.set(product.region); this.editReceiver.set(product.receiver || '—');
     this.editCategory.set(product.category); this.editBatch.set(product.batch);
   }
   closeProduct() { this.selectedProduct.set(null); }
@@ -316,6 +322,7 @@ export class App {
   }
 
   openCreateProduct() {
+    this.newProductSupplierId.set('');
     if (this.canWrite() && !this.isSignedIn()) { void this.openLogin(); return; }
     if (!this.canWrite()) { this.showToast('Workspace editing is not configured on this API.'); return; }
     this.showNewProduct.set(true);
@@ -384,10 +391,10 @@ export class App {
     this.busy.set(true);
     try {
       const response = await firstValueFrom(this.http.post<{ product: Product }>(this.apiUrl('/api/products'), {
-        name, material: this.newProductMaterial().trim(), supplier: this.newProductSupplier().trim(), region: this.newProductRegion().trim(), receiver: this.newProductReceiver().trim(),
+        name, material: this.newProductMaterial().trim(), supplierId: this.newProductSupplierId(), region: this.newProductRegion().trim(), receiver: this.newProductReceiver().trim(),
       }, this.authOptions()));
       this.products.update((items) => [response.product, ...items]);
-      this.showNewProduct.set(false); this.newProductName.set(''); this.newProductMaterial.set(''); this.newProductSupplier.set(''); this.newProductRegion.set(''); this.newProductReceiver.set('');
+      this.showNewProduct.set(false); this.newProductName.set(''); this.newProductMaterial.set(''); this.newProductSupplierId.set(''); this.newProductRegion.set(''); this.newProductReceiver.set('');
       await this.refreshWorkspace(); this.showToast('Product saved to the workspace.');
     } catch (error: any) { if (error?.status === 401) { void this.openLogin(); this.showToast('Sign in to save workspace changes.'); } else this.showToast(error?.error?.error || 'Could not save the product. Check the API connection and try again.'); }
     finally { this.busy.set(false); }
@@ -404,9 +411,11 @@ export class App {
   async saveProduct(product: Product) {
     this.busy.set(true);
     try {
-      const response = await firstValueFrom(this.http.patch<{ product: Product }>(this.apiUrl(`/api/products/${encodeURIComponent(product.id)}`), {
-        name: this.editName(), category: this.editCategory(), material: this.editMaterial(), supplier: this.editSupplier(), region: this.editRegion(), receiver: this.editReceiver(), batch: this.editBatch(),
-      }, this.authOptions()));
+      const updates: Record<string, string> = {
+        name: this.editName(), category: this.editCategory(), material: this.editMaterial(), region: this.editRegion(), receiver: this.editReceiver(), batch: this.editBatch(),
+      };
+      if (this.editSupplierId() !== '__legacy__') updates['supplierId'] = this.editSupplierId();
+      const response = await firstValueFrom(this.http.patch<{ product: Product }>(this.apiUrl(`/api/products/${encodeURIComponent(product.id)}`), updates, this.authOptions()));
       this.selectedProduct.set(response.product); await this.refreshWorkspace();
       const updated = this.products().find((entry) => entry.id === product.id);
       if (updated) this.selectedProduct.set(updated);
