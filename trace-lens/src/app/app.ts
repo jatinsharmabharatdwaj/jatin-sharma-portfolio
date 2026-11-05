@@ -65,12 +65,12 @@ export class App {
     const productEntries = this.products().flatMap((product) => (product.evidence || []).map((item) => ({
       _id: item._id, kind: item.kind, title: item.title, reference: item.reference, notes: item.notes, addedAt: item.addedAt,
       fileId: item.fileId, fileName: item.fileName, fileMimeType: item.fileMimeType, fileSize: item.fileSize,
-      fileId: item.fileId, fileName: item.fileName, fileMimeType: item.fileMimeType, fileSize: item.fileSize,
       reviewStatus: item.reviewStatus || 'Needs review', reviewNotes: item.reviewNotes || '', reviewedBy: item.reviewedBy || '', reviewedAt: item.reviewedAt,
       sourceType: 'Product' as const, sourceId: product.id, sourceName: product.name, sourceDetail: product.id,
     })));
     const supplierEntries = this.supplierProfiles().flatMap((supplier) => (supplier.evidenceRecords || []).map((item) => ({
       _id: item._id, kind: item.kind, title: item.title, reference: item.reference, notes: item.notes, addedAt: item.addedAt,
+      fileId: item.fileId, fileName: item.fileName, fileMimeType: item.fileMimeType, fileSize: item.fileSize,
       reviewStatus: item.reviewStatus || 'Needs review', reviewNotes: item.reviewNotes || '', reviewedBy: item.reviewedBy || '', reviewedAt: item.reviewedAt,
       sourceType: 'Supplier' as const, sourceId: supplier.id || '', sourceName: supplier.name, sourceDetail: supplier.region,
     })));
