@@ -16,7 +16,8 @@ type Analytics = { productCount: number; footprintKg: number; coverage: number; 
 type ChatMessage = { role: 'assistant' | 'user'; text: string; sources?: string[]; mode?: string };
 type Factor = { id: string; name: string; category?: string; source?: string; year?: number; unit_type?: string };
 type Account = { email: string; role: string };
-type Order = { id: string; senderEmail: string; senderRole: string; recipientEmail: string; recipientRole: string; productName: string; quantity: number; unit: string; notes: string; status: string; updatedAt: string };
+type OrderEvent = { status: string; actorEmail?: string; actorRole?: string; occurredAt?: string; note?: string };
+type Order = { id: string; senderEmail: string; senderRole: string; recipientEmail: string; recipientRole: string; productName: string; quantity: number; unit: string; notes: string; status: string; updatedAt: string; createdAt?: string; events?: OrderEvent[] };
 type EvidenceEntry = Evidence & { sourceType: 'Product' | 'Supplier'; sourceId: string; sourceName: string; sourceDetail: string };
 
 const EMPTY_ANALYTICS: Analytics = { productCount: 0, footprintKg: 0, coverage: 0, supplierCount: 0, openGaps: 0, verified: 0, mode: 'offline' };
@@ -375,6 +376,11 @@ export class App {
       this.showToast('Order sent.');
     } catch (error: any) { this.showToast(error?.error?.error || 'Could not send this order.'); }
     finally { this.orderBusy.set(false); }
+  }
+
+  orderEvents(order: Order): OrderEvent[] {
+    if (order.events?.length) return [...order.events].sort((a, b) => new Date(a.occurredAt || 0).getTime() - new Date(b.occurredAt || 0).getTime());
+    return [{ status: order.status, occurredAt: order.updatedAt || order.createdAt, note: 'Earlier status history was not recorded.' }];
   }
 
   async updateOrder(order: Order, status: string) {
