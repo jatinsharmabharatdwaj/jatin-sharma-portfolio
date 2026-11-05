@@ -102,22 +102,36 @@
       <section class="panel products-panel evidence-panel" *ngIf="activeView() === 'evidence'">
         <div class="panel-heading products-heading">
           <div><div class="panel-kicker"><span class="heading-spark">▤</span> WORKSPACE EVIDENCE</div><h2>Evidence records <span class="count-pill">{{ evidenceEntries().length }}</span></h2><p class="supplier-module-note">Records linked to workspace products and saved supplier profiles.</p></div>
-          <label class="evidence-search"><span>⌕</span><input aria-label="Filter evidence records" placeholder="Filter evidence…" [ngModel]="evidenceQuery()" (ngModelChange)="evidenceQuery.set($event)"></label>
+          <div class="evidence-filters"><label class="evidence-search"><span>⌕</span><input aria-label="Filter evidence records" placeholder="Filter evidence…" [ngModel]="evidenceQuery()" (ngModelChange)="evidenceQuery.set($event)"></label><label class="evidence-status-filter"><span>REVIEW</span><select aria-label="Filter by review status" [ngModel]="evidenceReviewFilter()" (ngModelChange)="evidenceReviewFilter.set($event)"><option value="All">All states</option><option value="Needs review">Needs review</option><option value="Reviewed">Reviewed</option><option value="Needs follow-up">Needs follow-up</option></select></label></div>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>EVIDENCE RECORD</th><th>TYPE</th><th>LINKED RECORD</th><th>REFERENCE</th><th>ADDED</th><th></th></tr></thead><tbody>
+        <div class="table-wrap"><table><thead><tr><th>EVIDENCE RECORD</th><th>TYPE</th><th>LINKED RECORD</th><th>REFERENCE</th><th>ADDED</th><th>REVIEW STATUS</th><th>ACTIONS</th></tr></thead><tbody>
           <tr *ngFor="let item of filteredEvidenceEntries()">
             <td><div class="supplier-cell"><b>{{ item.title }}</b><small>{{ item.notes || 'No notes' }}</small></div></td>
             <td><span class="status-pill review"><i></i>{{ item.kind | titlecase }}</span></td>
             <td><div class="supplier-cell"><b>{{ item.sourceType }} · {{ item.sourceName }}</b><small>{{ item.sourceDetail }}</small></div></td>
             <td class="evidence-reference">{{ item.reference || '—' }}</td>
             <td>{{ item.addedAt ? (item.addedAt | date:'mediumDate') : '—' }}</td>
-            <td><button class="row-open" type="button" [attr.aria-label]="'Open linked ' + item.sourceType + ' record'" (click)="openEvidenceSource(item)">↗</button></td>
+            <td><div class="evidence-review-cell"><span class="evidence-review-pill" [class.reviewed]="item.reviewStatus === 'Reviewed'" [class.followup]="item.reviewStatus === 'Needs follow-up'">{{ item.reviewStatus || 'Needs review' }}</span><small *ngIf="item.reviewedBy">Reviewed by {{ item.reviewedBy }}</small></div></td>
+            <td><div class="evidence-row-actions"><button class="review-action" type="button" (click)="openEvidenceReview(item)">Review</button><button class="row-open" type="button" [attr.aria-label]="'Open linked ' + item.sourceType + ' record'" (click)="openEvidenceSource(item)">↗</button></div></td>
           </tr>
-          <tr *ngIf="evidenceEntries().length === 0"><td colspan="6" class="empty-row">No evidence records yet. Add a record from a product passport or supplier profile.</td></tr>
-          <tr *ngIf="evidenceEntries().length > 0 && filteredEvidenceEntries().length === 0"><td colspan="6" class="empty-row">No evidence matches that filter.</td></tr>
+          <tr *ngIf="evidenceEntries().length === 0"><td colspan="7" class="empty-row">No evidence records yet. Add a record from a product passport or supplier profile.</td></tr>
+          <tr *ngIf="evidenceEntries().length > 0 && filteredEvidenceEntries().length === 0"><td colspan="7" class="empty-row">No evidence matches those filters.</td></tr>
         </tbody></table></div>
         <div class="table-footer"><span>Showing <b>{{ filteredEvidenceEntries().length }}</b> of <b>{{ evidenceEntries().length }}</b> evidence records</span><span>Live workspace records · No verification implied</span></div>
       </section>
+      <div class="modal-backdrop evidence-review-backdrop" *ngIf="evidenceReviewTarget() as entry" (click)="closeEvidenceReview()">
+        <section class="dialog-card evidence-review-dialog" role="dialog" aria-modal="true" aria-labelledby="evidenceReviewTitle" (click)="$event.stopPropagation()">
+          <button class="dialog-close" type="button" (click)="closeEvidenceReview()" aria-label="Close review">×</button>
+          <span class="dialog-kicker">EVIDENCE / WORKSPACE REVIEW</span>
+          <h2 id="evidenceReviewTitle">Review this record.</h2>
+          <p>{{ entry.title }} · {{ entry.sourceType }}: {{ entry.sourceName }}</p>
+          <div class="review-disclaimer">This is an internal workspace review. It does not verify the document or supplier independently.</div>
+          <label>REVIEW STATUS<select [ngModel]="evidenceReviewStatus()" (ngModelChange)="evidenceReviewStatus.set($event)"><option value="Needs review">Needs review</option><option value="Reviewed">Reviewed</option><option value="Needs follow-up">Needs follow-up</option></select></label>
+          <label>REVIEW NOTES<textarea rows="4" maxlength="500" [ngModel]="evidenceReviewNotes()" (ngModelChange)="evidenceReviewNotes.set($event)" placeholder="Record what was checked or what is still needed"></textarea></label>
+          <small class="auth-hint" *ngIf="entry.reviewedBy">Last reviewed by {{ entry.reviewedBy }}<span *ngIf="entry.reviewedAt"> · {{ entry.reviewedAt | date:'medium' }}</span></small>
+          <div class="dialog-actions"><button class="cancel-button" type="button" (click)="closeEvidenceReview()">Cancel</button><button class="primary-button" type="button" (click)="saveEvidenceReview()" [disabled]="evidenceReviewBusy()">{{ evidenceReviewBusy() ? 'Saving…' : 'Save review' }} <span>✓</span></button></div>
+        </section>
+      </div>
       <footer class="app-footer"><span><i></i> TRACE LENS / PERSONAL PROJECT</span><span>ANGULAR · EXPRESS · MONGODB · GROUNDED AI</span><span>{{ apiState() === 'online' ? databaseMode() : 'API OFFLINE' }} · 2026</span></footer>
     </div>
   </main>
