@@ -13,7 +13,7 @@
     </nav>
     <div class="nav-label tools-label">TOOLS</div>
     <nav class="side-nav">
-      <button (click)="showToast('Traceability map is ready for the next iteration.')"><span class="nav-icon">⌖</span> Traceability map <span class="new-dot"></span></button>
+      <button [class.active]="activeView() === 'traceability'" (click)="navTo('traceability')"><span class="nav-icon">⌖</span> Traceability map <span class="nav-count">{{ traceabilityRows().length }}</span></button>
       <button (click)="navTo('evidence')"><span class="nav-icon">▤</span> Evidence inbox <span class="inbox-badge" *ngIf="evidenceEntries().length">{{ evidenceEntries().length }}</span></button>
       <button (click)="showToast('Audit log demo opened.')"><span class="nav-icon">◷</span> Audit log</button>
     </nav>
@@ -38,7 +38,7 @@
     <div class="content-wrap">
       <div class="demo-banner" [class.api-offline]="apiState() === 'offline'"><span class="demo-pulse"></span><span><b>{{ apiState() === 'online' ? (databaseMode() === 'mongodb' ? 'CONNECTED WORKSPACE' : 'SESSION WORKSPACE') : apiState() === 'offline' ? 'API OFFLINE' : 'CONNECTING' }}</b><i>{{ apiState() === 'online' ? (databaseMode() === 'mongodb' ? 'Connected to MongoDB · workspace records are live.' : 'API connected · changes last for this server session.') : apiState() === 'offline' ? 'Start or connect the TraceLens backend to load workspace data.' : 'Checking the API connection…' }}</i></span><button (click)="refreshWorkspace()">{{ apiState() === 'offline' ? 'RECONNECT' : 'REFRESH' }} <span>↻</span></button></div>
       <section class="page-intro">
-        <div><div class="eyebrow"><span class="eyebrow-line"></span> SUPPLY CHAIN IMPACT / FY 2026</div><h1>{{ activeView() === 'overview' ? 'Supply chain, ' : activeView() === 'products' ? 'Products, ' : activeView() === 'suppliers' ? 'Suppliers, ' : activeView() === 'evidence' ? 'Evidence, ' : activeView() === 'orders' ? 'Orders, ' : 'Impact data, ' }}<em>{{ activeView() === 'overview' ? 'in focus.' : activeView() === 'evidence' ? 'in one place.' : 'connected.' }}</em></h1><p>{{ activeView() === 'evidence' ? 'Review evidence records attached to products and supplier profiles.' : 'One clear view of the materials, partners, and impact behind every product.' }}</p></div>
+        <div><div class="eyebrow"><span class="eyebrow-line"></span> SUPPLY CHAIN IMPACT / FY 2026</div><h1>{{ activeView() === 'overview' ? 'Supply chain, ' : activeView() === 'products' ? 'Products, ' : activeView() === 'suppliers' ? 'Suppliers, ' : activeView() === 'evidence' ? 'Evidence, ' : activeView() === 'orders' ? 'Orders, ' : activeView() === 'traceability' ? 'Traceability, ' : 'Impact data, ' }}<em>{{ activeView() === 'overview' || activeView() === 'traceability' ? 'in focus.' : activeView() === 'evidence' ? 'in one place.' : 'connected.' }}</em></h1><p>{{ activeView() === 'evidence' ? 'Review evidence records attached to products and supplier profiles.' : activeView() === 'traceability' ? 'Explore the supplier, product, material, and destination links saved in this workspace.' : 'One clear view of the materials, partners, and impact behind every product.' }}</p></div>
         <div class="intro-actions"><div class="period-select"><span class="calendar-icon">▦</span> Workspace snapshot <span>⌄</span></div><button class="primary-button" (click)="openCreateProduct()"><span>＋</span> New product</button></div>
       </section>
 
@@ -69,14 +69,34 @@
         <p class="empty-row" *ngIf="orders().length === 0">No orders yet. Orders sent to your account will appear here.</p>
       </section>
 
-      <section class="metric-grid" *ngIf="activeView() !== 'orders' && activeView() !== 'evidence'" aria-label="Impact summary">
+      <section class="panel products-panel traceability-panel" *ngIf="activeView() === 'traceability'">
+        <div class="panel-heading products-heading">
+          <div><div class="panel-kicker"><span class="heading-spark">⌖</span> RECORDED WORKSPACE LINKS</div><h2>Traceability map <span class="count-pill">{{ traceabilityRows().length }}</span></h2><p class="supplier-module-note">Each path is assembled from saved product fields. Missing details stay marked as not recorded.</p></div>
+        </div>
+        <div class="trace-map-list" *ngIf="traceabilityRows().length">
+          <article class="trace-map-card" *ngFor="let row of traceabilityRows()">
+            <div class="trace-path">
+              <div class="trace-node"><small>SUPPLIER / ORIGIN</small><b>{{ row.supplier }}</b><span>{{ row.region }}</span></div>
+              <span class="trace-arrow" aria-hidden="true">→</span>
+              <div class="trace-node trace-product-node"><small>PRODUCT / MATERIAL</small><b>{{ row.name }}</b><span>{{ row.material }}</span></div>
+              <span class="trace-arrow" aria-hidden="true">→</span>
+              <div class="trace-node" [class.trace-node-missing]="!row.receiver"><small>RECEIVER / DESTINATION</small><b>{{ row.receiver || 'Not recorded' }}</b><span>{{ row.receiver ? 'Saved product field' : 'Add a destination to this product' }}</span></div>
+            </div>
+            <div class="trace-map-meta"><span>{{ row.id }} · Batch {{ row.batch }}</span><span>{{ row.evidenceCount }} evidence {{ row.evidenceCount === 1 ? 'record' : 'records' }} · {{ row.status }}</span><button class="text-button" (click)="openProduct(row.product)">Open product ↗</button></div>
+          </article>
+        </div>
+        <p class="empty-row" *ngIf="traceabilityRows().length === 0">No product links to show yet. Add a product record to start mapping your saved supply-chain details.</p>
+        <p class="trace-map-disclaimer">This map reflects workspace records only. It does not confirm physical movement, supplier claims, or third-party verification.</p>
+      </section>
+
+      <section class="metric-grid" *ngIf="activeView() !== 'orders' && activeView() !== 'evidence' && activeView() !== 'traceability'" aria-label="Impact summary">
         <article class="metric-card metric-primary"><div class="metric-heading"><span>RECORDED FOOTPRINT</span><span class="metric-icon">◉</span></div><div class="metric-value">{{ (analytics().footprintKg / 1000) | number:'1.2-2' }} <small>tCO₂e</small></div><div class="metric-bottom"><span class="trend-down">{{ analytics().productCount }} products</span><span>summed from workspace records</span></div></article>
         <article class="metric-card"><div class="metric-heading"><span>EVIDENCE COVERAGE</span><span class="metric-icon green-icon">⌖</span></div><div class="metric-value">{{ analytics().coverage }}<small>%</small></div><div class="metric-bottom"><span class="trend-up">{{ analytics().verified }} verified</span><span>product records</span><div class="mini-progress"><i [style.width.%]="analytics().coverage"></i></div></div></article>
         <article class="metric-card"><div class="metric-heading"><span>ACTIVE SUPPLIERS</span><span class="metric-icon amber-icon">▤</span></div><div class="metric-value">{{ analytics().supplierCount }} <small>partners</small></div><div class="metric-bottom"><span class="neutral-count">{{ products().length }}</span><span>linked product records</span><div class="mini-progress amber-progress"><i [style.width.%]="analytics().supplierCount ? 100 : 0"></i></div></div></article>
         <article class="metric-card"><div class="metric-heading"><span>OPEN EVIDENCE GAPS</span><span class="metric-icon red-icon">⌁</span></div><div class="metric-value">{{ analytics().openGaps | number:'2.0-0' }} <small>products</small></div><div class="metric-bottom"><span class="gap-copy"><i></i> Below 80% coverage</span><button class="small-arrow" (click)="navTo('products')" aria-label="Review gaps">↗</button></div></article>
       </section>
 
-      <section class="analysis-grid" *ngIf="activeView() !== 'orders' && activeView() !== 'evidence'">
+      <section class="analysis-grid" *ngIf="activeView() !== 'orders' && activeView() !== 'evidence' && activeView() !== 'traceability'">
         <article class="panel impact-panel">
           <div class="panel-heading"><div><div class="panel-kicker"><span class="heading-spark">✳</span> LIVE IMPACT DATA</div><h2>Footprint by material</h2></div><button class="select-control" (click)="navTo('impact')">{{ apiState() === 'online' ? 'Workspace data' : 'Waiting for API' }} <span>⌄</span></button></div>
           <div class="chart-summary"><b>{{ analytics().footprintKg | number:'1.0-2' }} <small>kg CO₂e</small></b><span class="chart-legend"><i></i> Current workspace</span></div>
@@ -93,7 +113,7 @@
         </article>
       </section>
 
-      <section class="panel products-panel" *ngIf="activeView() !== 'suppliers' && activeView() !== 'orders' && activeView() !== 'evidence'">
+      <section class="panel products-panel" *ngIf="activeView() !== 'suppliers' && activeView() !== 'orders' && activeView() !== 'evidence' && activeView() !== 'traceability'">
         <div class="panel-heading products-heading"><div><div class="panel-kicker"><span class="heading-spark">◈</span> PRODUCT PASSPORTS</div><h2>Products in your portfolio <span class="count-pill">{{ filteredProducts().length }}</span></h2></div><div class="product-actions"><label class="table-search"><span>⌕</span><input placeholder="Filter products…" [ngModel]="query()" (ngModelChange)="query.set($event)" aria-label="Filter products"></label><button class="table-menu" (click)="exportCsv()"><span>⇩</span> Export <span>⌄</span></button><button class="view-all" (click)="navTo('products')">View all <span>→</span></button></div></div>
         <div class="table-wrap"><table><thead><tr><th>PRODUCT</th><th>SUPPLIER / ORIGIN</th><th>RECEIVER / DESTINATION</th><th>TRACEABILITY</th><th>FOOTPRINT <span class="sort-icon">↕</span></th><th>STATUS</th><th></th></tr></thead><tbody><tr *ngFor="let product of filteredProducts()" (click)="openProduct(product)"><td><div class="product-cell"><span class="product-swatch" [style.background]="product.color"><i></i></span><span><b>{{ product.name }}</b><small>{{ product.id }} <span>·</span> {{ product.category }}</small></span></div></td><td><div class="supplier-cell"><b>{{ product.supplier }}</b><small><span class="location-dot">⌖</span> {{ product.region }}</small></div></td><td><div class="supplier-cell"><b>{{ product.receiver || '—' }}</b></div></td><td><div class="trace-cell"><div class="trace-track"><i [style.width.%]="product.progress"></i></div><span>{{ product.progress }}%</span></div></td><td><b class="co2-value">{{ product.emissions | number:'1.2-2' }} <small>kg</small></b></td><td><span class="status-pill" [class.verified]="product.status === 'Verified'" [class.review]="product.status === 'In review'" [class.missing]="product.status === 'Needs evidence'"><i></i>{{ product.status }}</span></td><td><button class="row-open" aria-label="Open product passport" (click)="$event.stopPropagation(); openProduct(product)">↗</button></td></tr><tr *ngIf="filteredProducts().length === 0"><td colspan="7" class="empty-row">No products match that search.</td></tr></tbody></table></div>
         <div class="table-footer"><span>Showing <b>{{ filteredProducts().length }}</b> of <b>{{ products().length }}</b> workspace products</span><span>{{ databaseMode() === 'mongodb' ? 'MongoDB · saved records' : databaseMode() === 'session-demo' ? 'Demo server · session only' : 'Waiting for API connection' }}</span></div>
