@@ -415,10 +415,9 @@ export class App {
         name: this.editName(), category: this.editCategory(), material: this.editMaterial(), region: this.editRegion(), receiver: this.editReceiver(), batch: this.editBatch(),
       };
       if (this.editSupplierId() !== '__legacy__') updates['supplierId'] = this.editSupplierId();
-      const response = await firstValueFrom(this.http.patch<{ product: Product }>(this.apiUrl(`/api/products/${encodeURIComponent(product.id)}`), updates, this.authOptions()));
-      this.selectedProduct.set(response.product); await this.refreshWorkspace();
-      const updated = this.products().find((entry) => entry.id === product.id);
-      if (updated) this.selectedProduct.set(updated);
+      await firstValueFrom(this.http.patch(this.apiUrl(`/api/products/${encodeURIComponent(product.id)}`), updates, this.authOptions()));
+      await this.refreshWorkspace();
+      this.closeProduct();
       this.showToast('Product passport updated.');
     } catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); } else this.showToast(error?.error?.error || 'Could not update this product.'); }
     finally { this.busy.set(false); }
