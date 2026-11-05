@@ -127,7 +127,7 @@ function signToken(payload) {
 }
 async function requireOwner(req, res, next) {
   if (!ownerEditingConfigured()) return res.status(503).json({ error: 'Workspace editing is not configured on this server.' });
-  const token = req.headers.authorization?.match(/^Bearer ([\\w.-]+)$/)?.[1];
+  const token = req.headers.authorization?.match(/^Bearer ([\w.-]+)$/)?.[1];
   if (!token) return res.status(401).json({ error: 'Sign in to use workspace actions.' });
   try {
     const [head, body, signature] = token.split('.');
