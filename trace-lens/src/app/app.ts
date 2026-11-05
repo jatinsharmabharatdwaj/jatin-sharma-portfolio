@@ -356,7 +356,15 @@ export class App {
     } catch { this.orders.set([]); }
   }
 
-  async loadAuditLog() {\n    if (!this.isSignedIn()) { this.auditEntries.set([]); return; }\n    this.auditLoading.set(true);\n    try { const result = await firstValueFrom(this.http.get<{ entries: AuditEntry[] }>(this.apiUrl('/api/audit-log'), this.authOptions())); this.auditEntries.set(result.entries || []); }\n    catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); } else this.showToast(error?.error?.error || 'Could not load the activity log.'); }\n    finally { this.auditLoading.set(false); }\n  }\n\n  roleName(role = this.account()?.role || '') {
+  async loadAuditLog() {
+    if (!this.isSignedIn()) { this.auditEntries.set([]); return; }
+    this.auditLoading.set(true);
+    try { const result = await firstValueFrom(this.http.get<{ entries: AuditEntry[] }>(this.apiUrl('/api/audit-log'), this.authOptions())); this.auditEntries.set(result.entries || []); }
+    catch (error: any) { if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); } else this.showToast(error?.error?.error || 'Could not load the activity log.'); }
+    finally { this.auditLoading.set(false); }
+  }
+
+  roleName(role = this.account()?.role || '') {
     return ({ brand_owner: 'Brand / product owner', manufacturer: 'Manufacturer', supplier: 'Supplier', logistics_partner: 'Logistics partner', retailer: 'Retailer / customer', other: 'Other' } as Record<string, string>)[role] || role;
   }
 
