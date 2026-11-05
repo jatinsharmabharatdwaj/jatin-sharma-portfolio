@@ -333,6 +333,11 @@ export class App {
     this.showSupplierForm.set(true);
   }
 
+  supplierRecord() {
+    const id = this.supplierId();
+    return this.suppliers().find((supplier) => supplier.id === id);
+  }
+
   async addSupplierEvidence() {
     const id = this.supplierId();
     const title = this.supplierEvidenceTitle().trim();
