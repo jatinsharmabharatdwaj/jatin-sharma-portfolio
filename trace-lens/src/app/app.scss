@@ -61,3 +61,21 @@
 .evidence-row-actions{display:flex;align-items:center;gap:5px}.review-action{height:24px;padding:0 7px;border:1px solid var(--line);border-radius:4px;background:transparent;color:var(--sub);font-size:8px;cursor:pointer}.review-action:hover{border-color:var(--lime);color:var(--lime)}
 .evidence-review-dialog{width:min(480px,100%)}.evidence-review-dialog label{display:block;margin:13px 0 0;color:var(--muted);font:7px 'DM Mono',monospace;letter-spacing:.06em}.evidence-review-dialog label select,.evidence-review-dialog label textarea{display:block;width:100%;margin-top:7px;padding:10px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--text);outline:0;font:10px 'DM Sans',sans-serif}.evidence-review-dialog label select{height:40px;padding:0 10px}.evidence-review-dialog label textarea{resize:vertical;line-height:1.5}.evidence-review-dialog label select:focus,.evidence-review-dialog label textarea:focus{border-color:var(--lime)}.review-disclaimer{padding:10px;border:1px solid #e8a36f3a;border-radius:5px;background:#e8a36f0d;color:var(--sub);font-size:9px;line-height:1.5}
 @media(max-width:620px){.evidence-filters{width:100%;align-items:stretch;flex-direction:column}.evidence-status-filter{width:100%;justify-content:space-between}.evidence-status-filter select{flex:1}.evidence-review-cell small{max-width:90px}}
+
+
+/* Traceability map: show only recorded links and make missing fields explicit. */
+.trace-map-list { display: grid; gap: 14px; margin-top: 20px; }
+.trace-map-card { padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); }
+.trace-path { display: grid; grid-template-columns: minmax(0,1fr) 32px minmax(0,1.2fr) 32px minmax(0,1fr); align-items: stretch; gap: 10px; }
+.trace-node { display: grid; align-content: start; gap: 7px; min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.trace-node small { color: var(--sub); font-size: 9px; letter-spacing: .09em; }
+.trace-node b { overflow-wrap: anywhere; font-size: 14px; }
+.trace-node span { color: var(--sub); font-size: 12px; overflow-wrap: anywhere; }
+.trace-product-node { border-color: color-mix(in srgb, var(--lime) 42%, var(--line)); }
+.trace-node-missing { border-style: dashed; }
+.trace-node-missing b { color: var(--sub); font-weight: 500; }
+.trace-arrow { display: grid; place-items: center; color: var(--lime); font-size: 20px; }
+.trace-map-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 13px; color: var(--sub); font-size: 11px; }
+.trace-map-meta .text-button { margin-left: auto; border: 0; background: transparent; color: var(--lime); font: inherit; cursor: pointer; }
+.trace-map-disclaimer { margin: 18px 0 0; color: var(--sub); font-size: 11px; line-height: 1.6; }
+@media (max-width: 700px) { .trace-path { grid-template-columns: 1fr; } .trace-arrow { transform: rotate(90deg); min-height: 20px; } .trace-map-meta .text-button { margin-left: 0; } }
