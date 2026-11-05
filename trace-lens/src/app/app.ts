@@ -16,6 +16,7 @@ type ChatMessage = { role: 'assistant' | 'user'; text: string; sources?: string[
 type Factor = { id: string; name: string; category?: string; source?: string; year?: number; unit_type?: string };
 type Account = { email: string; role: string };
 type Order = { id: string; senderEmail: string; senderRole: string; recipientEmail: string; recipientRole: string; productName: string; quantity: number; unit: string; notes: string; status: string; updatedAt: string };
+type EvidenceEntry = { kind: string; title: string; reference?: string; notes?: string; addedAt?: string; sourceType: 'Product' | 'Supplier'; sourceId: string; sourceName: string; sourceDetail: string };
 
 const EMPTY_ANALYTICS: Analytics = { productCount: 0, footprintKg: 0, coverage: 0, supplierCount: 0, openGaps: 0, verified: 0, mode: 'offline' };
 
@@ -58,6 +59,22 @@ export class App {
   readonly products = signal<Product[]>([]);
   readonly suppliers = signal<Supplier[]>([]);
   readonly supplierProfiles = computed(() => this.suppliers().filter((supplier) => Boolean(supplier.id)));
+  readonly evidenceEntries = computed<EvidenceEntry[]>(() => {
+    const productEntries = this.products().flatMap((product) => (product.evidence || []).map((item) => ({
+      kind: item.kind, title: item.title, reference: item.reference, notes: item.notes, addedAt: item.addedAt,
+      sourceType: 'Product' as const, sourceId: product.id, sourceName: product.name, sourceDetail: product.id,
+    })));
+    const supplierEntries = this.supplierProfiles().flatMap((supplier) => (supplier.evidenceRecords || []).map((item) => ({
+      kind: item.kind, title: item.title, reference: item.reference, notes: item.notes, addedAt: item.addedAt,
+      sourceType: 'Supplier' as const, sourceId: supplier.id || '', sourceName: supplier.name, sourceDetail: supplier.region,
+    })));
+    return [...productEntries, ...supplierEntries].sort((a, b) => new Date(b.addedAt || 0).getTime() - new Date(a.addedAt || 0).getTime());
+  });
+  readonly filteredEvidenceEntries = computed(() => {
+    const q = this.evidenceQuery().trim().toLowerCase();
+    const entries = this.evidenceEntries();
+    return q ? entries.filter((entry) => `${entry.title} ${entry.kind} ${entry.reference || ''} ${entry.sourceType} ${entry.sourceName} ${entry.sourceDetail}`.toLowerCase().includes(q)) : entries;
+  });
   readonly showSupplierForm = signal(false);
   readonly supplierBusy = signal(false);
   readonly supplierId = signal('');
@@ -72,8 +89,9 @@ export class App {
   readonly supplierEvidenceReference = signal('');
   readonly supplierEvidenceBusy = signal(false);
   readonly analytics = signal<Analytics>(EMPTY_ANALYTICS);
-  readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact' | 'orders'>('overview');
+  readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact' | 'orders' | 'evidence'>('overview');
   readonly query = signal('');
+  readonly evidenceQuery = signal('');
   readonly isLight = signal(false);
   readonly isThinking = signal(false);
   readonly busy = signal(false);
@@ -152,10 +170,20 @@ export class App {
     }
   }
 
-  navTo(view: 'overview' | 'products' | 'suppliers' | 'impact' | 'orders') {
+  navTo(view: 'overview' | 'products' | 'suppliers' | 'impact' | 'orders' | 'evidence') {
     if (view === 'orders' && !this.isSignedIn()) { void this.openLogin(); return; }
     this.activeView.set(view);
     if (view === 'orders') void this.loadOrders();
+  }
+  openEvidenceSource(entry: EvidenceEntry) {
+    if (entry.sourceType === 'Product') {
+      const product = this.products().find((item) => item.id === entry.sourceId);
+      if (product) this.openProduct(product);
+      return;
+    }
+    this.activeView.set('suppliers');
+    const supplier = this.supplierProfiles().find((item) => item.id === entry.sourceId);
+    if (supplier && this.isSignedIn()) this.openSupplierForm(supplier);
   }
   toggleTheme() { this.isLight.update((value) => !value); }
   openProduct(product: Product) {
