@@ -15,7 +15,7 @@
     <nav class="side-nav">
       <button [class.active]="activeView() === 'traceability'" (click)="navTo('traceability')"><span class="nav-icon">⌖</span> Traceability map <span class="nav-count">{{ traceabilityRows().length }}</span></button>
       <button (click)="navTo('evidence')"><span class="nav-icon">▤</span> Evidence inbox <span class="inbox-badge" *ngIf="evidenceEntries().length">{{ evidenceEntries().length }}</span></button>
-      <button (click)="showToast('Audit log demo opened.')"><span class="nav-icon">◷</span> Audit log</button>
+      <button *ngIf="isSignedIn()" [class.active]="activeView() === 'audit'" (click)="navTo('audit')"><span class="nav-icon">◷</span> Audit log <span class="nav-count">{{ auditEntries().length }}</span></button>
     </nav>
     </div>
     <div class="sidebar-spacer"></div>
@@ -129,6 +129,23 @@
         <div class="table-footer"><span>Showing <b>{{ filteredProducts().length }}</b> of <b>{{ products().length }}</b> workspace products</span><span>{{ databaseMode() === 'mongodb' ? 'MongoDB · saved records' : databaseMode() === 'session-demo' ? 'Demo server · session only' : 'Waiting for API connection' }}</span></div>
       </section>
       <section class="panel products-panel supplier-panel" *ngIf="activeView() === 'suppliers'"><div class="panel-heading products-heading"><div><div class="panel-kicker"><span class="heading-spark">⌘</span> SUPPLIER DIRECTORY</div><h2>Partners in this workspace <span class="count-pill">{{ suppliers().length }}</span></h2><p class="supplier-module-note">Manage supplier profiles alongside product, evidence, and footprint data.</p></div><button *ngIf="isSignedIn()" class="primary-button" type="button" (click)="openSupplierForm()"><span>＋</span> Add supplier</button></div><div class="table-wrap"><table><thead><tr><th>SUPPLIER / CONTACT</th><th>REGION</th><th>STATUS</th><th>PRODUCTS</th><th>AVG. COVERAGE</th><th>EVIDENCE</th><th>FOOTPRINT</th><th></th></tr></thead><tbody><tr *ngFor="let supplier of suppliers()"><td><div class="supplier-cell"><b>{{ supplier.name }}</b><small>{{ supplier.contactName || supplier.email || 'Profile details not added' }}</small></div></td><td>{{ supplier.region }}</td><td><span class="status-pill" [class.verified]="supplier.status === 'Active'" [class.review]="supplier.status === 'Needs profile' || supplier.status === 'Pending'"><i></i>{{ supplier.status || 'Needs profile' }}</span></td><td>{{ supplier.products }}</td><td><div class="trace-cell"><div class="trace-track"><i [style.width.%]="supplier.averageCoverage"></i></div>{{ supplier.averageCoverage }}%</div></td><td><div class="supplier-evidence-summary"><b>{{ supplier.evidenceRecords?.length || 0 }} supplier records</b><small>{{ supplier.evidenceItems }} product records · {{ supplier.profileCompleteness }}% profile checklist</small></div></td><td>{{ supplier.footprintKg | number:'1.2-2' }} kg CO₂e</td><td><button *ngIf="isSignedIn()" class="row-open" type="button" [attr.aria-label]="'Edit ' + supplier.name" (click)="openSupplierForm(supplier)">↗</button></td></tr><tr *ngIf="suppliers().length === 0"><td colspan="8" class="empty-row">No suppliers yet. Add a supplier profile or link a supplier from a product record.</td></tr></tbody></table></div></section>
+      <section class="panel products-panel evidence-panel" *ngIf="activeView() === 'audit'">
+        <div class="panel-heading products-heading">
+          <div><div class="panel-kicker"><span class="heading-spark">◷</span> PRIVATE WORKSPACE HISTORY</div><h2>Audit log <span class="count-pill">{{ auditEntries().length }}</span></h2><p class="supplier-module-note">Changes made by signed-in workspace members. History starts with this release.</p></div>
+          <div class="evidence-filters"><label class="evidence-search"><span>⌕</span><input aria-label="Filter audit history" placeholder="Search activity…" [ngModel]="auditQuery()" (ngModelChange)="auditQuery.set($event)"></label><button class="cancel-button" type="button" (click)="loadAuditLog()" [disabled]="auditLoading()">{{ auditLoading() ? 'Refreshing…' : 'Refresh' }}</button></div>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>ACTIVITY</th><th>RECORD</th><th>SUMMARY</th><th>MEMBER</th><th>WHEN</th></tr></thead><tbody>
+          <tr *ngFor="let entry of filteredAuditEntries()">
+            <td><span class="status-pill review"><i></i>{{ entry.action }}</span></td>
+            <td><div class="supplier-cell"><b>{{ entry.entityName || entry.entityType }}</b><small>{{ entry.entityId || entry.entityType }}</small></div></td>
+            <td>{{ entry.summary || '—' }}</td><td><div class="supplier-cell"><b>{{ entry.actorEmail }}</b><small>{{ roleName(entry.actorRole) }}</small></div></td>
+            <td>{{ entry.occurredAt | date:'medium' }}</td>
+          </tr>
+          <tr *ngIf="!auditLoading() && auditEntries().length === 0"><td colspan="5" class="empty-row">No activity recorded yet. Changes from this release onward will appear here.</td></tr>
+          <tr *ngIf="auditEntries().length > 0 && filteredAuditEntries().length === 0"><td colspan="5" class="empty-row">No activity matches that search.</td></tr>
+        </tbody></table></div>
+        <div class="table-footer"><span>Showing <b>{{ filteredAuditEntries().length }}</b> of <b>{{ auditEntries().length }}</b> latest entries</span><span>Private to signed-in workspace members · Up to 250 entries</span></div>
+      </section>
       <section class="panel products-panel evidence-panel" *ngIf="activeView() === 'evidence'">
         <div class="panel-heading products-heading">
           <div><div class="panel-kicker"><span class="heading-spark">▤</span> WORKSPACE EVIDENCE</div><h2>Evidence records <span class="count-pill">{{ evidenceEntries().length }}</span></h2><p class="supplier-module-note">Records linked to workspace products and saved supplier profiles.</p></div>
