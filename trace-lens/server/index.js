@@ -59,6 +59,7 @@ const SupplierSchema = new mongoose.Schema({
   region: { type: String, trim: true, maxlength: 80, default: '—' },
   notes: { type: String, trim: true, maxlength: 500, default: '' },
   status: { type: String, enum: ['Active', 'Pending'], default: 'Active' },
+  evidence: { type: [EvidenceSchema], default: [] },
   updatedAt: { type: Date, default: Date.now },
 }, { versionKey: false });
 const SupplierRecord = mongoose.model('SupplierRecord', SupplierSchema);
@@ -268,7 +269,10 @@ app.get('/api/suppliers', async (_req, res, next) => {
     const suppliers = [...new Set([...map.keys(), ...managed.keys()])].map((key) => {
       const base = map.get(key) || { name: managed.get(key)?.name || key, region: '—', products: 0, averageCoverage: 0, evidenceItems: 0, footprintKg: 0 };
       const record = managed.get(key);
-      return { ...base, ...(record ? { id: record.id, contactName: record.contactName || '', email: record.email || '', region: record.region || base.region, notes: record.notes || '', status: record.status || 'Active' } : { contactName: '', email: '', notes: '', status: 'Needs profile' }) };
+      const evidenceRecords = record?.evidence || [];
+      const checks = [record?.contactName, record?.email, record?.region && record.region !== '—', evidenceRecords.some((item) => item.kind === 'supplier'), evidenceRecords.some((item) => item.kind === 'certificate')];
+      const profileCompleteness = Math.round(checks.filter(Boolean).length / checks.length * 100);
+      return { ...base, ...(record ? { id: record.id, contactName: record.contactName || '', email: record.email || '', region: record.region || base.region, notes: record.notes || '', status: record.status || 'Active', evidenceRecords, profileCompleteness } : { contactName: '', email: '', notes: '', status: 'Needs profile', evidenceRecords: [], profileCompleteness: 0 }) };
     }).map((entry) => ({ ...entry, averageCoverage: entry.products ? Math.round(entry.averageCoverage / entry.products) : 0, footprintKg: Number(entry.footprintKg.toFixed(2)) }));
     res.json({ suppliers, mode: databaseReady ? 'mongodb' : 'session-demo' });
   } catch (error) { next(error); }
@@ -311,6 +315,27 @@ app.patch('/api/suppliers/:id', requireOwner, async (req, res, next) => {
     else { supplier = demoSuppliers.find((item) => item.id === req.params.id); if (supplier) Object.assign(supplier, fields); }
     if (!supplier) return res.status(404).json({ error: 'Supplier not found.' });
     res.json({ supplier });
+  } catch (error) { next(error); }
+});
+app.post('/api/suppliers/:id/evidence', requireOwner, async (req, res, next) => {
+  try {
+    const title = cleanText(req.body?.title);
+    if (!title) return res.status(400).json({ error: 'Evidence title is required.' });
+    const evidence = {
+      kind: ['supplier', 'certificate', 'audit', 'other'].includes(req.body?.kind) ? req.body.kind : 'other',
+      title, reference: cleanText(req.body?.reference, 500),
+      notes: cleanText(req.body?.notes, 500), addedAt: new Date(),
+    };
+    let supplier;
+    if (databaseReady) {
+      supplier = await SupplierRecord.findOne({ id: req.params.id });
+      if (supplier) { supplier.evidence.push(evidence); supplier.updatedAt = new Date(); await supplier.save(); }
+    } else {
+      supplier = demoSuppliers.find((item) => item.id === req.params.id);
+      if (supplier) { supplier.evidence ||= []; supplier.evidence.unshift({ ...evidence, _id: `SEV-${Date.now()}` }); supplier.updatedAt = new Date(); }
+    }
+    if (!supplier) return res.status(404).json({ error: 'Supplier not found.' });
+    res.status(201).json({ evidence: supplier.evidence?.at(-1) || evidence });
   } catch (error) { next(error); }
 });
 app.get('/api/products', async (_req, res, next) => {
