@@ -37,6 +37,7 @@ const ProductSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 120 },
   category: { type: String, default: 'Apparel · New product', maxlength: 80 },
   supplier: { type: String, default: '—', trim: true, maxlength: 120 },
+  supplierId: { type: String, default: '', trim: true, maxlength: 100 },
   region: { type: String, default: '—', trim: true, maxlength: 80 },
   receiver: { type: String, default: '—', trim: true, maxlength: 160 },
   status: { type: String, enum: ['Verified', 'In review', 'Needs evidence'], default: 'Needs evidence' },
@@ -339,23 +340,47 @@ app.post('/api/suppliers/:id/evidence', requireOwner, async (req, res, next) => 
   } catch (error) { next(error); }
 });
 app.get('/api/products', async (_req, res, next) => {
-  try { res.json({ products: await listProducts(), mode: databaseReady ? 'mongodb' : 'session-demo' }); } catch (error) { next(error); }
+  try {
+    const [products, supplierRecords] = await Promise.all([
+      listProducts(),
+      databaseReady ? SupplierRecord.find({}).select('id name normalizedName').lean() : demoSuppliers,
+    ]);
+    const supplierIdsByName = new Map(supplierRecords.map((supplier) => [supplier.normalizedName || supplier.name.trim().toLowerCase(), supplier.id]));
+    const linkedProducts = products.map((product) => {
+      const normalizedName = (product.supplier || '').trim().toLowerCase();
+      return { ...product, supplierId: product.supplierId || supplierIdsByName.get(normalizedName) || '' };
+    });
+    res.json({ products: linkedProducts, mode: databaseReady ? 'mongodb' : 'session-demo' });
+  } catch (error) { next(error); }
 });
 app.get('/api/products/:id', async (req, res, next) => {
   try {
     const product = await findProduct(req.params.id);
     if (!product) return res.status(404).json({ error: 'Product not found.' });
-    res.json({ product });
+    let supplierId = product.supplierId || '';
+    if (!supplierId && product.supplier && product.supplier !== '—') {
+      const supplier = databaseReady
+        ? await SupplierRecord.findOne({ normalizedName: product.supplier.trim().toLowerCase() }).select('id').lean()
+        : demoSuppliers.find((item) => item.normalizedName === product.supplier.trim().toLowerCase());
+      supplierId = supplier?.id || '';
+    }
+    res.json({ product: { ...product.toObject?.() || product, supplierId } });
   } catch (error) { next(error); }
 });
 app.post('/api/products', requireOwner, async (req, res, next) => {
   try {
     const name = cleanText(req.body?.name);
     if (!name) return res.status(400).json({ error: 'Product name is required.' });
+    const supplierId = cleanText(req.body?.supplierId, 100);
+    let supplier = null;
+    if (supplierId) {
+      supplier = databaseReady ? await SupplierRecord.findOne({ id: supplierId }).lean() : demoSuppliers.find((item) => item.id === supplierId);
+      if (!supplier) return res.status(400).json({ error: 'Choose a supplier saved in the workspace.' });
+    }
     const product = {
       id: newProductId(), name, category: cleanText(req.body.category, 80) || 'Apparel · New product',
-      supplier: cleanText(req.body.supplier) || '—', region: cleanText(req.body.region, 80) || '—',
-      receiver: cleanText(req.body.receiver, 160) || '—',
+      supplier: supplier?.name || cleanText(req.body.supplier) || '—', supplierId: supplier?.id || '',
+      region: cleanText(req.body.region, 80) || '—', receiver: cleanText(req.body.receiver, 160) || '—',
       material: cleanText(req.body.material, 160) || '—', batch: cleanText(req.body.batch, 80) || '—',
       status: 'Needs evidence', emissions: 0, emissionsSource: '—', progress: 0, evidence: [],
     };
@@ -367,6 +392,14 @@ app.patch('/api/products/:id', requireOwner, async (req, res, next) => {
   try {
     const fields = ['name', 'category', 'supplier', 'region', 'receiver', 'material', 'batch'];
     const updates = Object.fromEntries(fields.filter((key) => req.body?.[key] !== undefined).map((key) => [key, cleanText(req.body[key], key === 'material' ? 160 : 120)]));
+    if (req.body?.supplierId !== undefined) {
+      const supplierId = cleanText(req.body.supplierId, 100);
+      if (supplierId) {
+        const supplier = databaseReady ? await SupplierRecord.findOne({ id: supplierId }).lean() : demoSuppliers.find((item) => item.id === supplierId);
+        if (!supplier) return res.status(400).json({ error: 'Choose a supplier saved in the workspace.' });
+        updates.supplierId = supplier.id; updates.supplier = supplier.name;
+      } else { updates.supplierId = ''; updates.supplier = '—'; }
+    }
     if (!Object.keys(updates).length) return res.status(400).json({ error: 'Provide at least one editable product field.' });
     let product;
     if (databaseReady) product = await Product.findOneAndUpdate({ id: req.params.id }, { $set: { ...updates, updatedAt: new Date() } }, { new: true, runValidators: true });
