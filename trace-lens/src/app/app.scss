@@ -49,3 +49,15 @@
 .evidence-search input::placeholder{color:var(--muted)}
 .evidence-reference{max-width:250px;white-space:normal;overflow-wrap:anywhere;color:var(--sub);font-size:8px}
 @media(max-width:620px){.evidence-search{width:100%;margin-top:10px}.evidence-panel .products-heading{display:flex;align-items:flex-start;flex-direction:column}.evidence-reference{max-width:120px}}
+
+.evidence-filters{display:flex;align-items:center;gap:8px}
+.evidence-status-filter{height:30px;display:flex;align-items:center;gap:7px;padding:0 8px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--muted);font:7px 'DM Mono',monospace}
+.evidence-status-filter select{border:0;outline:0;background:transparent;color:var(--text);font:9px 'DM Sans',sans-serif}
+.evidence-status-filter option{background:var(--panel);color:var(--text)}
+.evidence-review-cell{display:grid;gap:4px}.evidence-review-cell small{max-width:150px;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:7px}
+.evidence-review-pill{display:inline-flex;width:max-content;align-items:center;padding:4px 7px;border:1px solid #e8a36f38;border-radius:999px;background:#e8a36f12;color:var(--orange);font-size:7px}
+.evidence-review-pill.reviewed{border-color:#91b77d40;background:#91b77d12;color:var(--green)}
+.evidence-review-pill.followup{border-color:#dc827b40;background:#dc827b10;color:var(--red)}
+.evidence-row-actions{display:flex;align-items:center;gap:5px}.review-action{height:24px;padding:0 7px;border:1px solid var(--line);border-radius:4px;background:transparent;color:var(--sub);font-size:8px;cursor:pointer}.review-action:hover{border-color:var(--lime);color:var(--lime)}
+.evidence-review-dialog{width:min(480px,100%)}.evidence-review-dialog label{display:block;margin:13px 0 0;color:var(--muted);font:7px 'DM Mono',monospace;letter-spacing:.06em}.evidence-review-dialog label select,.evidence-review-dialog label textarea{display:block;width:100%;margin-top:7px;padding:10px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--text);outline:0;font:10px 'DM Sans',sans-serif}.evidence-review-dialog label select{height:40px;padding:0 10px}.evidence-review-dialog label textarea{resize:vertical;line-height:1.5}.evidence-review-dialog label select:focus,.evidence-review-dialog label textarea:focus{border-color:var(--lime)}.review-disclaimer{padding:10px;border:1px solid #e8a36f3a;border-radius:5px;background:#e8a36f0d;color:var(--sub);font-size:9px;line-height:1.5}
+@media(max-width:620px){.evidence-filters{width:100%;align-items:stretch;flex-direction:column}.evidence-status-filter{width:100%;justify-content:space-between}.evidence-status-filter select{flex:1}.evidence-review-cell small{max-width:90px}}
