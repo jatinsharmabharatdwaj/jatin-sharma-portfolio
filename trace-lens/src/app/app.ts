@@ -4,7 +4,8 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 
-type Evidence = { _id?: string; kind: string; title: string; reference?: string; notes?: string; addedAt?: string };
+type EvidenceReviewStatus = 'Needs review' | 'Reviewed' | 'Needs follow-up';
+type Evidence = { _id?: string; kind: string; title: string; reference?: string; notes?: string; addedAt?: string; reviewStatus?: EvidenceReviewStatus; reviewNotes?: string; reviewedBy?: string; reviewedAt?: string };
 type Product = {
   id: string; name: string; category: string; supplier: string; supplierId?: string; region: string; receiver: string;
   status: 'Verified' | 'In review' | 'Needs evidence'; emissions: number; emissionsSource?: string;
@@ -16,7 +17,7 @@ type ChatMessage = { role: 'assistant' | 'user'; text: string; sources?: string[
 type Factor = { id: string; name: string; category?: string; source?: string; year?: number; unit_type?: string };
 type Account = { email: string; role: string };
 type Order = { id: string; senderEmail: string; senderRole: string; recipientEmail: string; recipientRole: string; productName: string; quantity: number; unit: string; notes: string; status: string; updatedAt: string };
-type EvidenceEntry = { kind: string; title: string; reference?: string; notes?: string; addedAt?: string; sourceType: 'Product' | 'Supplier'; sourceId: string; sourceName: string; sourceDetail: string };
+type EvidenceEntry = Evidence & { sourceType: 'Product' | 'Supplier'; sourceId: string; sourceName: string; sourceDetail: string };
 
 const EMPTY_ANALYTICS: Analytics = { productCount: 0, footprintKg: 0, coverage: 0, supplierCount: 0, openGaps: 0, verified: 0, mode: 'offline' };
 
@@ -61,19 +62,25 @@ export class App {
   readonly supplierProfiles = computed(() => this.suppliers().filter((supplier) => Boolean(supplier.id)));
   readonly evidenceEntries = computed<EvidenceEntry[]>(() => {
     const productEntries = this.products().flatMap((product) => (product.evidence || []).map((item) => ({
-      kind: item.kind, title: item.title, reference: item.reference, notes: item.notes, addedAt: item.addedAt,
+      _id: item._id, kind: item.kind, title: item.title, reference: item.reference, notes: item.notes, addedAt: item.addedAt,
+      reviewStatus: item.reviewStatus || 'Needs review', reviewNotes: item.reviewNotes || '', reviewedBy: item.reviewedBy || '', reviewedAt: item.reviewedAt,
       sourceType: 'Product' as const, sourceId: product.id, sourceName: product.name, sourceDetail: product.id,
     })));
     const supplierEntries = this.supplierProfiles().flatMap((supplier) => (supplier.evidenceRecords || []).map((item) => ({
-      kind: item.kind, title: item.title, reference: item.reference, notes: item.notes, addedAt: item.addedAt,
+      _id: item._id, kind: item.kind, title: item.title, reference: item.reference, notes: item.notes, addedAt: item.addedAt,
+      reviewStatus: item.reviewStatus || 'Needs review', reviewNotes: item.reviewNotes || '', reviewedBy: item.reviewedBy || '', reviewedAt: item.reviewedAt,
       sourceType: 'Supplier' as const, sourceId: supplier.id || '', sourceName: supplier.name, sourceDetail: supplier.region,
     })));
     return [...productEntries, ...supplierEntries].sort((a, b) => new Date(b.addedAt || 0).getTime() - new Date(a.addedAt || 0).getTime());
   });
   readonly filteredEvidenceEntries = computed(() => {
     const q = this.evidenceQuery().trim().toLowerCase();
-    const entries = this.evidenceEntries();
-    return q ? entries.filter((entry) => `${entry.title} ${entry.kind} ${entry.reference || ''} ${entry.sourceType} ${entry.sourceName} ${entry.sourceDetail}`.toLowerCase().includes(q)) : entries;
+    const status = this.evidenceReviewFilter();
+    return this.evidenceEntries().filter((entry) => {
+      const matchesStatus = status === 'All' || entry.reviewStatus === status;
+      const matchesQuery = !q || `${entry.title} ${entry.kind} ${entry.reference || ''} ${entry.sourceType} ${entry.sourceName} ${entry.sourceDetail} ${entry.reviewNotes || ''}`.toLowerCase().includes(q);
+      return matchesStatus && matchesQuery;
+    });
   });
   readonly showSupplierForm = signal(false);
   readonly supplierBusy = signal(false);
@@ -92,6 +99,11 @@ export class App {
   readonly activeView = signal<'overview' | 'products' | 'suppliers' | 'impact' | 'orders' | 'evidence'>('overview');
   readonly query = signal('');
   readonly evidenceQuery = signal('');
+  readonly evidenceReviewFilter = signal<'All' | EvidenceReviewStatus>('All');
+  readonly evidenceReviewTarget = signal<EvidenceEntry | null>(null);
+  readonly evidenceReviewStatus = signal<EvidenceReviewStatus>('Needs review');
+  readonly evidenceReviewNotes = signal('');
+  readonly evidenceReviewBusy = signal(false);
   readonly isLight = signal(false);
   readonly isThinking = signal(false);
   readonly busy = signal(false);
@@ -174,6 +186,29 @@ export class App {
     if (view === 'orders' && !this.isSignedIn()) { void this.openLogin(); return; }
     this.activeView.set(view);
     if (view === 'orders') void this.loadOrders();
+  }
+  openEvidenceReview(entry: EvidenceEntry) {
+    if (!this.isSignedIn()) { void this.openLogin(); return; }
+    this.evidenceReviewTarget.set(entry);
+    this.evidenceReviewStatus.set(entry.reviewStatus || 'Needs review');
+    this.evidenceReviewNotes.set(entry.reviewNotes || '');
+  }
+  closeEvidenceReview() { this.evidenceReviewTarget.set(null); }
+  async saveEvidenceReview() {
+    const entry = this.evidenceReviewTarget();
+    if (!entry || !entry._id || this.evidenceReviewBusy()) return;
+    this.evidenceReviewBusy.set(true);
+    try {
+      await firstValueFrom(this.http.patch(this.apiUrl(`/api/evidence/${entry.sourceType.toLowerCase()}/${encodeURIComponent(entry.sourceId)}/${encodeURIComponent(entry._id)}`), {
+        reviewStatus: this.evidenceReviewStatus(), reviewNotes: this.evidenceReviewNotes().trim(),
+      }, this.authOptions()));
+      await this.refreshWorkspace();
+      this.closeEvidenceReview();
+      this.showToast('Evidence review updated.');
+    } catch (error: any) {
+      if (error?.status === 401) { this.isSignedIn.set(false); localStorage.removeItem('tracelens-owner-token'); void this.openLogin(); }
+      else this.showToast(error?.error?.error || 'Could not update the evidence review.');
+    } finally { this.evidenceReviewBusy.set(false); }
   }
   openEvidenceSource(entry: EvidenceEntry) {
     if (entry.sourceType === 'Product') {
